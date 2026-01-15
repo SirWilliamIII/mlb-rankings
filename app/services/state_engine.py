@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class StateEngine:
     """
@@ -18,6 +19,10 @@ class StateEngine:
     STATE_TO_IDX = {state: i for i, state in enumerate(STATES)}
     IDX_TO_STATE = {i: state for i, state in enumerate(STATES)}
     END_STATE_IDX = 24 # 3 Outs
+
+    # Tunable calibration constants
+    HOME_FIELD_Z = 0.12       # ~3-4% win prob boost (calibrate with historical data)
+    VOLATILITY_SCALE = 0.25   # Tune with Brier score on historical outcomes
 
     def __init__(self):
         # Add End State label
@@ -50,20 +55,22 @@ class StateEngine:
         state = (outs, int(runner_on_1st), int(runner_on_2nd), int(runner_on_3rd))
         return self.STATE_TO_IDX.get(state, self.END_STATE_IDX)
 
-    def calculate_expected_runs(self, state_idx, transition_matrix=None):
+    def calculate_expected_runs(self, state_idx, pitcher_modifier=1.0):
         """
         Calculates the expected runs for the remainder of the inning from state_idx.
-        E = (I - Q)^-1 * R
-        Where Q is the transition matrix between non-absorbing states.
-        However, for baseball, we also need to account for runs scored during transitions.
+
+        Args:
+            state_idx: The current base/out state index (0-23, or 24 for end of inning)
+            pitcher_modifier: Float coefficient for pitcher quality/fatigue.
+                              1.0 = average pitcher
+                              >1.0 = compromised pitcher (expect more runs)
+                              <1.0 = dominant pitcher (expect fewer runs)
         """
         if state_idx >= self.END_STATE_IDX:
             return 0.0
-            
-        # Simplified implementation for now:
-        # Use a pre-calculated run expectancy table (RE24) as a baseline.
-        # We can then adjust it based on the transition matrix.
-        return self._get_re24_baseline(state_idx)
+
+        base_re24 = self._get_re24_baseline(state_idx)
+        return base_re24 * pitcher_modifier
 
     def _get_re24_baseline(self, state_idx):
         """
@@ -87,19 +94,42 @@ class StateEngine:
             return re24_values[state_idx]
         return 0.0
 
-    def get_win_probability(self, home_score, away_score, inning, half_inning, state_idx):
+    def get_win_probability(self, home_score, away_score, inning, half_inning,
+                            state_idx, pitcher_modifier=1.0):
         """
-        Calculates the probability of the home team winning given the current game state.
-        half_inning: 0 for Top, 1 for Bottom
+        Calculates the probability of the home team winning using logistic regression.
+
+        Args:
+            home_score: Current home team runs
+            away_score: Current away team runs
+            inning: Current inning (1-9+)
+            half_inning: 0 for Top (away batting), 1 for Bottom (home batting)
+            state_idx: Current base/out state index
+            pitcher_modifier: Float coefficient for pitcher fatigue/TTTO
         """
-        # This will use the expected runs and historical win probability charts.
-        # For now, a very simple placeholder.
+        # Handle walk-off not needed (home already ahead in bottom 9+)
+        if inning >= 9 and half_inning == 1 and home_score > away_score:
+            return 1.0
+
         score_diff = home_score - away_score
-        
-        # Base win prob based on score diff
-        win_prob = 0.5 + (score_diff * 0.1)
-        
-        # Adjust for inning (as game nears end, score diff matters more)
-        win_prob = 0.5 + (score_diff * (0.1 + (inning * 0.02)))
-        
-        return min(max(win_prob, 0.01), 0.99)
+        re24 = self._get_re24_baseline(state_idx) * pitcher_modifier
+
+        # Effective run differential: who benefits from baserunners?
+        if half_inning == 1:  # Bottom - home batting, RE24 helps home
+            effective_diff = score_diff + re24
+        else:  # Top - away batting, RE24 hurts home
+            effective_diff = score_diff - re24
+
+        # Innings remaining (handle extras, avoid division by zero)
+        if inning >= 9:
+            innings_remaining = 0.5 + (1.0 if half_inning == 0 else 0.0)
+        else:
+            innings_remaining = (9 - inning) + (0.5 if half_inning == 0 else 0.0)
+
+        # Z-score: run differential normalized by remaining volatility + home advantage
+        volatility = self.VOLATILITY_SCALE * math.sqrt(max(0.5, innings_remaining))
+        z = (effective_diff / volatility) + self.HOME_FIELD_Z
+
+        # Sigmoid function, clamped for live betting realism (books never show 99%)
+        win_prob = 1.0 / (1.0 + math.exp(-z))
+        return min(0.95, max(0.05, win_prob))

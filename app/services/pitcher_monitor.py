@@ -52,3 +52,28 @@ class PitcherMonitor:
         if self.pitch_count > 95:
             return True
         return False
+
+    def get_performance_modifier(self):
+        """
+        Returns a float multiplier representing pitcher effectiveness.
+
+        Used by StateEngine to adjust RE24 (Run Expectancy).
+        - 1.0 = average/neutral performance
+        - >1.0 = compromised pitcher (expect more runs)
+        - <1.0 = dominant pitcher (expect fewer runs)
+
+        Returns:
+            Float coefficient capped at 1.30 to avoid extreme values.
+        """
+        modifier = 1.0
+
+        # TTTO penalty: +15% expected runs
+        if self.check_ttto_signal():
+            modifier *= 1.15
+
+        # Fatigue penalty: +10% expected runs
+        if self.check_fatigue_signal():
+            modifier *= 1.10
+
+        # Cap to avoid unrealistic extremes
+        return min(modifier, 1.30)

@@ -87,20 +87,24 @@ class GameReplayService:
 
             # --- State Engine ---
             outs = count.get('outs', 0)
-            
+
             runner_1 = 1 if match_key_exists(play, 'matchup.postOnFirst') else 0
             runner_2 = 1 if match_key_exists(play, 'matchup.postOnSecond') else 0
             runner_3 = 1 if match_key_exists(play, 'matchup.postOnThird') else 0
-            
+
             state_idx = self.state_engine.get_current_state_index(outs, runner_1, runner_2, runner_3)
-            
-            re24 = self.state_engine.calculate_expected_runs(state_idx)
+
+            # Get pitcher fatigue/TTTO modifier
+            pitcher_modifier = active_monitor.get_performance_modifier()
+
+            re24 = self.state_engine.calculate_expected_runs(state_idx, pitcher_modifier)
             win_prob = self.state_engine.get_win_probability(
-                current_score['home'], 
-                current_score['away'], 
-                inning, 
-                0 if is_top else 1, 
-                state_idx
+                current_score['home'],
+                current_score['away'],
+                inning,
+                0 if is_top else 1,
+                state_idx,
+                pitcher_modifier=pitcher_modifier
             )
             
             # Output Event
@@ -117,7 +121,8 @@ class GameReplayService:
             if active_monitor.check_fatigue_signal():
                 print(f"  [ALERT] Fatigue Watch: {pitcher_name} over 95 pitches ({active_monitor.pitch_count})")
 
-            print(f"RE24: {re24:.2f} runs | Win Prob (Home): {win_prob:.1%}")
+            modifier_note = f" [Pitcher Mod: {pitcher_modifier:.2f}]" if pitcher_modifier > 1.0 else ""
+            print(f"RE24: {re24:.2f} runs | Win Prob (Home): {win_prob:.1%}{modifier_note}")
             
             # time.sleep(delay) 
 
