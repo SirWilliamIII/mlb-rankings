@@ -122,14 +122,51 @@ class TestWinProbability:
         assert 0.05 <= win_prob <= 0.95
 
     def test_clamped_values(self, engine):
-        """Probabilities should be clamped to 0.05-0.95 range."""
+        """Probabilities should be clamped to 0.001-0.999 range."""
         state_idx = engine.get_current_state_index(0, 0, 0, 0)
         # Huge home lead
         win_prob = engine.get_win_probability(15, 0, 9, 0, state_idx)
-        assert win_prob <= 0.95
+        assert win_prob <= 0.999
         # Huge away lead
         win_prob = engine.get_win_probability(0, 15, 9, 0, state_idx)
-        assert win_prob >= 0.05
+        assert win_prob >= 0.001
+
+
+class TestFirstPrinciplesCalibration:
+    """Tests verifying the first-principles model produces sensible values."""
+
+    def test_tie_game_start_is_hfa_only(self, engine):
+        """Tie game, top 1st, bases empty should be ~52-53% (just HFA)."""
+        state_idx = engine.get_current_state_index(0, 0, 0, 0)
+        win_prob = engine.get_win_probability(0, 0, 1, 0, state_idx)
+        # Should be close to 50% + small HFA boost
+        assert 0.51 <= win_prob <= 0.55
+
+    def test_one_run_lead_early_modest_advantage(self, engine):
+        """Home +1 in 1st should be ~55-62% (modest, lots of game left)."""
+        state_idx = engine.get_current_state_index(0, 0, 0, 0)
+        win_prob = engine.get_win_probability(1, 0, 1, 0, state_idx)
+        assert 0.55 <= win_prob <= 0.65
+
+    def test_bases_loaded_walkoff_threat(self, engine):
+        """Tie, bot 9th, bases loaded = very high home probability."""
+        loaded_idx = engine.get_current_state_index(0, 1, 1, 1)
+        win_prob = engine.get_win_probability(0, 0, 9, 1, loaded_idx)
+        # Home only needs 1 run with 2.36 RE24 situation
+        assert win_prob >= 0.85
+
+    def test_bases_loaded_away_threat(self, engine):
+        """Tie, top 9th, bases loaded = low home probability."""
+        loaded_idx = engine.get_current_state_index(0, 1, 1, 1)
+        win_prob = engine.get_win_probability(0, 0, 9, 0, loaded_idx)
+        # Away threatening with 2.36 RE24 situation
+        assert win_prob <= 0.35
+
+    def test_three_run_lead_ninth_commanding(self, engine):
+        """Home +3 in 9th should be ~85-95%."""
+        state_idx = engine.get_current_state_index(0, 0, 0, 0)
+        win_prob = engine.get_win_probability(5, 2, 9, 0, state_idx)
+        assert 0.85 <= win_prob <= 0.95
 
 
 class TestPitcherModifierOnWinProb:

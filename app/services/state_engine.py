@@ -20,9 +20,10 @@ class StateEngine:
     IDX_TO_STATE = {i: state for i, state in enumerate(STATES)}
     END_STATE_IDX = 24 # 3 Outs
 
-    # Tunable calibration constants
-    HOME_FIELD_Z = 0.12       # ~3-4% win prob boost (calibrate with historical data)
-    VOLATILITY_SCALE = 0.25   # Tune with Brier score on historical outcomes
+    # First-principles constants (derived from MLB scoring data)
+    VOLATILITY_SCALE = 1.17   # Derived: 3.5 runs std dev / 3 = 1.17
+    HOME_FIELD_Z = 0.10       # ~53-54% win prob at tie (historical HFA)
+    BASELINE_RE24 = 0.51      # Expected runs for "null state" (bases empty, 0 outs)
 
     def __init__(self):
         # Add End State label
@@ -97,7 +98,12 @@ class StateEngine:
     def get_win_probability(self, home_score, away_score, inning, half_inning,
                             state_idx, pitcher_modifier=1.0):
         """
-        Calculates the probability of the home team winning using logistic regression.
+        Calculates the probability of the home team winning using logistic regression
+        with 'Leverage Delta' approach.
+
+        The key insight: we only care about runs ABOVE the baseline expectation.
+        Bases empty at start of inning = leverage of 0 (neutral).
+        Bases loaded = leverage of +1.85 runs (high swing potential).
 
         Args:
             home_score: Current home team runs
@@ -111,25 +117,38 @@ class StateEngine:
         if inning >= 9 and half_inning == 1 and home_score > away_score:
             return 1.0
 
+        # 1. Raw score differential
         score_diff = home_score - away_score
-        re24 = self._get_re24_baseline(state_idx) * pitcher_modifier
 
-        # Effective run differential: who benefits from baserunners?
-        if half_inning == 1:  # Bottom - home batting, RE24 helps home
-            effective_diff = score_diff + re24
-        else:  # Top - away batting, RE24 hurts home
-            effective_diff = score_diff - re24
+        # 2. Calculate Leverage Delta (marginal value above baseline)
+        # This is the key fix: we don't use raw RE24, only the DELTA from null state
+        current_re24 = self.calculate_expected_runs(state_idx, pitcher_modifier)
+        leverage = current_re24 - self.BASELINE_RE24
 
-        # Innings remaining (handle extras, avoid division by zero)
+        # 3. Apply leverage based on who's batting
+        if half_inning == 1:  # Bottom - home batting, leverage helps home
+            effective_diff = score_diff + leverage
+        else:  # Top - away batting, leverage hurts home
+            effective_diff = score_diff - leverage
+
+        # 4. Innings remaining (precision calculation)
+        # Top of inning: full half-inning + remaining full innings
+        # Bottom of inning: partial half-inning + remaining full innings
         if inning >= 9:
             innings_remaining = 0.5 + (1.0 if half_inning == 0 else 0.0)
         else:
-            innings_remaining = (9 - inning) + (0.5 if half_inning == 0 else 0.0)
+            innings_remaining = (9 - inning) + (1.0 if half_inning == 0 else 0.5)
+        innings_remaining = max(innings_remaining, 0.5)
 
-        # Z-score: run differential normalized by remaining volatility + home advantage
-        volatility = self.VOLATILITY_SCALE * math.sqrt(max(0.5, innings_remaining))
-        z = (effective_diff / volatility) + self.HOME_FIELD_Z
+        # 5. Volatility (std dev of remaining score differential)
+        # Derived: sqrt(innings_remaining / 9) * 3.5 = 1.17 * sqrt(innings_remaining)
+        std_dev = self.VOLATILITY_SCALE * math.sqrt(innings_remaining)
 
-        # Sigmoid function, clamped for live betting realism (books never show 99%)
+        # 6. Z-score with home field advantage
+        z = (effective_diff / std_dev) + self.HOME_FIELD_Z
+
+        # 7. Sigmoid function
         win_prob = 1.0 / (1.0 + math.exp(-z))
-        return min(0.95, max(0.05, win_prob))
+
+        # 8. Clamp (widened - blowouts do happen)
+        return min(0.999, max(0.001, win_prob))
