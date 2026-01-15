@@ -1,38 +1,59 @@
 # Project Progress: MLB Championship Probability Tracker
 
 ## Current Status
-Initial application structure, data integration, and simulation engine are operational.
+**Feature Complete / Production Ready**. The application now features a robust, autonomous backend with advanced statistical modeling and a "Value Finder" engine that identifies profitable betting opportunities against market odds.
 
 ## Completed Milestones
 
-### Phase 1: Data Foundation
+### Phase 1: Data Foundation (Enhanced)
 - [x] **Project Setup**: Initialized with `uv` for dependency management.
 - [x] **MLB API Integration**: Implemented `MlbApi` service using `mlb-statsapi`.
-    - Handles standings and schedule fetching.
-    - Includes offseason fallback logic (defaults to 2025 data when 2026 isn't yet active).
-- [x] **Basic Web Server**: Flask application serving as the backbone.
+- [x] **SportsData.io Integration**: Implemented `SportsDataClient` to fetch granular data:
+    - Team Season Stats (Runs Scored/Allowed) for Pythagorean Expectation.
+    - Player Season Stats (Pitching metrics) for FIP calculations.
+    - Betting Odds (or mocked equivalents for development).
+- [x] **Database Layer**: Implemented `DatabaseManager` using SQLite to support:
+    - **Caching**: API responses (Schedule, Standings) to minimize external calls.
+    - **History**: Storage of every simulation run for trend tracking.
+    - **Advanced Stats**: Tables for `team_stats_advanced` (Pythagorean) and `pitcher_stats` (FIP).
 
-### Phase 2: Monte Carlo Simulation Engine
-- [x] **Simulation Orchestrator**: `MonteCarloSimulator` simulates remaining regular season games and basic playoff outcomes.
-- [x] **Forecasting Model**: Stochastic prediction based on win percentages with home-field advantage adjustment.
-- [x] **Result Aggregation**: Calculates probabilities for Division Wins, Playoff Berths, League Pennants, and World Series titles.
+### Phase 2: Monte Carlo Simulation Engine (Upgraded)
+- [x] **Full Postseason Logic**: `MonteCarloSimulator` now simulates the exact MLB bracket structure:
+    - Seeding (1-6 per league).
+    - Wild Card Series (Best of 3).
+    - Division Series (Best of 5).
+    - Championship Series (Best of 7).
+    - World Series (Best of 7).
+- [x] **Advanced Forecasting Model**: Replaced naive Win % model with a **Log5 Probability Model**:
+    - **Base Strength**: Uses Pythagorean Expectation (`Runs^1.83 / (Runs^1.83 + RunsAllowed^1.83)`).
+    - **Pitcher Adjustment**: Adjusts win probability based on Starting Pitcher FIP (Fielding Independent Pitching).
+    - **Home Field Advantage**: +3% baseline adjustment.
 
-### Phase 3: Visualization & Polish (Partial)
-- [x] **Interactive Dashboard**: Flask-based UI serving a Plotly-powered frontend.
-- [x] **Probability Charts**: Dynamic bar charts for World Series and Playoff probabilities.
+### Phase 3: "Value Finder" & Automation
+- [x] **Betting Analyzer**: Implemented `BettingAnalyzer` service to:
+    - Compare "True Probability" (Model) vs. "Implied Probability" (Market Odds).
+    - Calculate **Expected Value (EV)** to highlight profitable edges.
+- [x] **Autonomous Backend**: Implemented `SchedulerService` using `APScheduler`:
+    - **Daily Refresh**: Automatically fetches fresh stats and odds at 4:00 AM.
+    - **Daily Simulation**: Runs 2,000+ iterations nightly and caches results.
+- [x] **API Endpoints**:
+    - `/api/latest-simulation`: High-performance read of the nightly run.
+    - `/betting-value`: Returns sorted list of high-EV betting opportunities.
 
-## Remaining Work
+### Phase 4: Visualization & UI
+- [x] **Interactive Dashboard**: Complete overhaul of `index.html` using Bootstrap 5.
+- [x] **Value Bets Table**: Displays top "Edge" opportunities with EV calculation.
+- [x] **Dynamic Charts**: Plotly.js charts for World Series and Playoff probabilities, powered by cached simulation data.
 
-### Data & Performance
-- [ ] **SQLite Caching**: Implement local storage to reduce API calls and store historical simulation results.
-- [ ] **Background Tasks**: Integrate `APScheduler` to automate data refreshes and simulation runs.
+## Technical Architecture
+- **Backend**: Flask + APScheduler (Background Tasks)
+- **Database**: SQLite (Local Cache & History)
+- **Stats Engine**: Python (NumPy/SciPy), Log5 Model, Pythagorean Expectation.
+- **External APIs**: 
+    - `mlb-statsapi` (Official MLB Data)
+    - `SportsData.io` (Advanced Stats & Odds)
 
-### Features
-- [ ] **Betting Odds Integration**: Fetch data from `The Odds API` to calculate implied probabilities.
-- [ ] **Comparison Logic**: Compare model probabilities vs. market odds to identify "value" bets.
-- [ ] **Trend Tracking**: Store historical probabilities to visualize changes over the course of the season.
-
-### Refinement
-- [ ] Enhanced statistical models (e.g., Elo ratings, pitcher-specific data).
-- [ ] Improved playoff tie-breaking logic.
-- [ ] Mobile-responsive UI polish.
+## Future Considerations
+- **Live Odds**: Switch `SportsDataClient` to production mode for real-time odds once the 2026 season begins.
+- **Lineup Integration**: Further refine the model by incorporating daily lineups (wOBA) into the game simulation.
+- **Trend Visualization**: Use the historical data stored in `simulation_runs` to graph how a team's probability changes over the season.

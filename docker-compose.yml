@@ -1,0 +1,11 @@
+services:
+  mlb-app:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount the local data directory to persist the SQLite database
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
