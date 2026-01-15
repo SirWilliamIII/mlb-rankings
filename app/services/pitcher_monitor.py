@@ -2,12 +2,18 @@ class PitcherMonitor:
     """
     Tracks pitcher state to detect 'Dead Arm' and 'Third Time Through Order' (TTTO) penalties.
     """
-    
-    def __init__(self):
+
+    def __init__(self, bullpen_fatigue=None):
+        """
+        Args:
+            bullpen_fatigue: Dict of {pitcher_id: {'modifier': float, 'status': str, ...}}
+                             from BullpenHistoryService. Used for reliever fatigue tracking.
+        """
         self.current_pitcher_id = None
         self.batters_faced = 0
         self.pitch_count = 0
-        self.is_bullpen = False # Flag if current pitcher is a reliever
+        self.is_bullpen = False  # Flag if current pitcher is a reliever
+        self.bullpen_fatigue = bullpen_fatigue or {}
 
     def update_pitcher(self, pitcher_id, is_starter=True):
         """
@@ -62,18 +68,29 @@ class PitcherMonitor:
         - >1.0 = compromised pitcher (expect more runs)
         - <1.0 = dominant pitcher (expect fewer runs)
 
+        Compounds multiple factors:
+        - TTTO (starter only): 1.15x
+        - In-game fatigue (>95 pitches): 1.10x
+        - Bullpen fatigue (reliever only): 1.15-1.25x based on recent usage
+
         Returns:
-            Float coefficient capped at 1.30 to avoid extreme values.
+            Float coefficient capped at 1.50 to avoid extreme values.
         """
         modifier = 1.0
 
-        # TTTO penalty: +15% expected runs
+        # TTTO penalty: +15% expected runs (starters only)
         if self.check_ttto_signal():
             modifier *= 1.15
 
-        # Fatigue penalty: +10% expected runs
+        # In-game fatigue penalty: +10% expected runs
         if self.check_fatigue_signal():
             modifier *= 1.10
 
-        # Cap to avoid unrealistic extremes
-        return min(modifier, 1.30)
+        # Bullpen fatigue: Apply historical usage penalty for relievers
+        if self.is_bullpen and self.current_pitcher_id:
+            pitcher_data = self.bullpen_fatigue.get(self.current_pitcher_id, {})
+            bullpen_mod = pitcher_data.get('modifier', 1.0)
+            modifier *= bullpen_mod
+
+        # Cap to avoid unrealistic extremes (increased for compound effects)
+        return min(modifier, 1.50)

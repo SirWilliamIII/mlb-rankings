@@ -2,6 +2,7 @@ import time
 from app.services.mlb_api import MlbApi
 from app.services.state_engine import StateEngine
 from app.services.pitcher_monitor import PitcherMonitor
+from app.services.bullpen_history_service import BullpenHistoryService
 
 class GameReplayService:
     """
@@ -12,8 +13,10 @@ class GameReplayService:
     def __init__(self, db_manager=None):
         self.mlb_api = MlbApi(db_manager)
         self.state_engine = StateEngine()
-        self.home_pitcher_monitor = PitcherMonitor()
-        self.away_pitcher_monitor = PitcherMonitor()
+        self.bullpen_service = BullpenHistoryService()
+        # PitcherMonitors are initialized per-game with bullpen fatigue data
+        self.home_pitcher_monitor = None
+        self.away_pitcher_monitor = None
 
     def replay_game(self, game_pk, delay=1.0):
         """
@@ -30,15 +33,37 @@ class GameReplayService:
 
         game_data = live_data.get('gameData', {})
         live_feed = live_data.get('liveData', {})
-        
-        home_team = game_data.get('teams', {}).get('home', {}).get('name')
-        away_team = game_data.get('teams', {}).get('away', {}).get('name')
+
+        home_team_data = game_data.get('teams', {}).get('home', {})
+        away_team_data = game_data.get('teams', {}).get('away', {})
+        home_team = home_team_data.get('name')
+        away_team = away_team_data.get('name')
+        home_team_id = home_team_data.get('id')
+        away_team_id = away_team_data.get('id')
         print(f"Matchup: {away_team} @ {home_team}")
-        
+
+        # Fetch bullpen fatigue for both teams
+        print("Fetching bullpen fatigue data...")
+        home_fatigue = self.bullpen_service.get_team_bullpen_fatigue(home_team_id) if home_team_id else {}
+        away_fatigue = self.bullpen_service.get_team_bullpen_fatigue(away_team_id) if away_team_id else {}
+
+        # Initialize pitcher monitors with bullpen fatigue data
+        self.home_pitcher_monitor = PitcherMonitor(bullpen_fatigue=home_fatigue)
+        self.away_pitcher_monitor = PitcherMonitor(bullpen_fatigue=away_fatigue)
+
+        if home_fatigue:
+            dead_count = sum(1 for p in home_fatigue.values() if p.get('status') == 'Dead')
+            tired_count = sum(1 for p in home_fatigue.values() if p.get('status') == 'Tired')
+            print(f"  {home_team} bullpen: {dead_count} Dead, {tired_count} Tired, {len(home_fatigue) - dead_count - tired_count} Fresh")
+        if away_fatigue:
+            dead_count = sum(1 for p in away_fatigue.values() if p.get('status') == 'Dead')
+            tired_count = sum(1 for p in away_fatigue.values() if p.get('status') == 'Tired')
+            print(f"  {away_team} bullpen: {dead_count} Dead, {tired_count} Tired, {len(away_fatigue) - dead_count - tired_count} Fresh")
+
         # 2. Extract Plays
         all_plays = live_feed.get('plays', {}).get('allPlays', [])
         print(f"Total Events: {len(all_plays)}")
-        
+
         # Track initial starters to determine bullpen usage
         home_starter_id = None
         away_starter_id = None
