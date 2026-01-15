@@ -1,0 +1,21 @@
+[project]
+name = "mlb-rankings"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "flask>=3.1.2",
+    "mlb-statsapi>=1.9.0",
+    "numpy>=2.4.1",
+    "pandas>=2.3.3",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "scipy>=1.17.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

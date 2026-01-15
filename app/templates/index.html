@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLB Probability & Value Tracker</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
+        .card-header { background-color: #fff; border-bottom: 2px solid #e9ecef; font-weight: bold; }
+        .value-bet-row { transition: background-color 0.2s; }
+        .value-bet-row:hover { background-color: #e9ecef; }
+        .positive-ev { color: #198754; font-weight: bold; }
+        .loading { text-align: center; padding: 50px; color: #6c757d; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="#">⚾ MLB Edge Tracker</a>
+    </div>
+</nav>
+
+<div class="container">
+    
+    <!-- Top Row: Betting Value -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>🔥 High Value Betting Opportunities</span>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadBettingValue()">Refresh Odds</button>
+                </div>
+                <div class="card-body">
+                    <div id="betting-loading" class="loading">Finding value...</div>
+                    <div class="table-responsive">
+                        <table class="table table-hover d-none" id="betting-table">
+                            <thead>
+                                <tr>
+                                    <th>Game</th>
+                                    <th>Pick</th>
+                                    <th>Model Win %</th>
+                                    <th>Market Odds</th>
+                                    <th>Implied Prob</th>
+                                    <th>Expected Value (EV)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="betting-data"></tbody>
+                        </table>
+                    </div>
+                    <div id="no-bets" class="alert alert-info d-none">No positive value bets found right now. Market is efficient!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Row: Championship Probabilities -->
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">🏆 World Series Probabilities</div>
+                <div class="card-body">
+                    <div id="ws-chart"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">⚾ Playoff Berth Probabilities</div>
+                <div class="card-body">
+                    <div id="playoff-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- Betting Value Logic ---
+    async function loadBettingValue() {
+        const loading = document.getElementById('betting-loading');
+        const table = document.getElementById('betting-table');
+        const tbody = document.getElementById('betting-data');
+        const noBets = document.getElementById('no-bets');
+
+        loading.classList.remove('d-none');
+        table.classList.add('d-none');
+        noBets.classList.add('d-none');
+        tbody.innerHTML = '';
+
+        try {
+            const response = await fetch('/betting-value');
+            const data = await response.json();
+
+            loading.classList.add('d-none');
+
+            if (data.opportunities && data.opportunities.length > 0) {
+                table.classList.remove('d-none');
+                data.opportunities.forEach(op => {
+                    const row = document.createElement('tr');
+                    row.className = 'value-bet-row';
+                    row.innerHTML = `
+                        <td>${op.game}</td>
+                        <td><span class="badge bg-primary">${op.bet_on}</span></td>
+                        <td>${op.model_prob}%</td>
+                        <td>${op.market_odds > 0 ? '+' + op.market_odds : op.market_odds}</td>
+                        <td>${op.implied_prob}%</td>
+                        <td class="positive-ev">+${op.ev_percent}%</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                noBets.classList.remove('d-none');
+            }
+        } catch (error) {
+            console.error("Error loading betting value:", error);
+            loading.innerText = "Error loading data.";
+        }
+    }
+
+    // --- Simulation Results Logic ---
+    async function loadSimulationResults() {
+        try {
+            // Try to get cached results first
+            let response = await fetch('/api/latest-simulation');
+            if (!response.ok) {
+                // If no cached results, trigger a quick simulation (for demo purposes)
+                response = await fetch('/simulate?iterations=100');
+            }
+            
+            const data = await response.json();
+            const probs = data.probabilities;
+
+            // Prepare Data for Plotly
+            const teams = [];
+            const wsProbs = [];
+            const playoffProbs = [];
+
+            for (const [id, stats] of Object.entries(probs)) {
+                if (stats.playoff_spot > 0.05) { // Filter out low-prob teams for cleaner chart
+                    teams.push(stats.name);
+                    wsProbs.push(stats.world_series_winner * 100);
+                    playoffProbs.push(stats.playoff_spot * 100);
+                }
+            }
+
+            // Sort by World Series Prob
+            const combined = teams.map((t, i) => ({ team: t, ws: wsProbs[i], playoff: playoffProbs[i] }));
+            combined.sort((a, b) => b.ws - a.ws);
+
+            // Chart 1: World Series
+            Plotly.newPlot('ws-chart', [{
+                x: combined.map(x => x.team),
+                y: combined.map(x => x.ws),
+                type: 'bar',
+                marker: { color: '#0d6efd' }
+            }], {
+                margin: { t: 10, b: 80 },
+                yaxis: { title: 'Probability (%)' }
+            });
+
+            // Chart 2: Playoffs
+            // Sort by Playoff Prob for this chart
+            combined.sort((a, b) => b.playoff - a.playoff);
+            Plotly.newPlot('playoff-chart', [{
+                x: combined.map(x => x.team),
+                y: combined.map(x => x.playoff),
+                type: 'bar',
+                marker: { color: '#198754' }
+            }], {
+                margin: { t: 10, b: 80 },
+                yaxis: { title: 'Probability (%)' }
+            });
+
+        } catch (error) {
+            console.error("Error loading simulation results:", error);
+            document.getElementById('ws-chart').innerText = "Error loading charts.";
+        }
+    }
+
+    // Initial Load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadBettingValue();
+        loadSimulationResults();
+    });
+</script>
+
+</body>
+</html>
