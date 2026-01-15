@@ -7,10 +7,9 @@ def client():
     with app.test_client() as client:
         yield client
 
-def test_index(client):
-    rv = client.get('/')
-    assert b"MLB Championship Probability Tracker" in rv.data
-
+    def test_index(client):
+        rv = client.get('/')
+        assert b"MLB Probability & Value Tracker" in rv.data
 def test_standings(client):
     rv = client.get('/standings')
     assert rv.status_code == 200

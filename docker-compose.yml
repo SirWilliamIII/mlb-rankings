@@ -1,11 +1,29 @@
 services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=mlb_stats
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   mlb-app:
     build: .
     ports:
       - "5000:5000"
     volumes:
-      # Mount the local data directory to persist the SQLite database
       - ./data:/app/data
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/mlb_stats
+    depends_on:
+      - db
     restart: unless-stopped
+
+volumes:
+  postgres_data:

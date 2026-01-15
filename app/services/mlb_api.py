@@ -103,3 +103,18 @@ class MlbApi:
         except Exception as e:
             print(f"Error fetching schedule for simulation: {e}")
             return []
+
+    def get_live_game_data(self, game_pk):
+        """
+        Fetches real-time granular data for a specific game (play-by-play, linescore, boxscore).
+        This data comes from the /v1.1/game/{gamePk}/feed/live endpoint.
+        """
+        try:
+            # Use statsapi.get() to hit the specific endpoint if a direct wrapper isn't preferred
+            # or statsapi.game_scoring_play_data etc. 
+            # The most comprehensive is getting the full game feed.
+            # 'game' endpoint usually corresponds to the full feed.
+            return statsapi.get('game', {'gamePk': game_pk})
+        except Exception as e:
+            print(f"Error fetching live data for game {game_pk}: {e}")
+            return None

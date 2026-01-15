@@ -10,6 +10,7 @@ dependencies = [
     "mlb-statsapi>=1.9.0",
     "numpy>=2.4.1",
     "pandas>=2.3.3",
+    "psycopg[binary]>=3.3.2",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
     "scipy>=1.17.0",
