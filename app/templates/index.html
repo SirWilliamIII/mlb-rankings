@@ -4,40 +4,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MLB Probability & Value Tracker</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
-        body { background-color: #f8f9fa; }
-        .card { margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
-        .card-header { background-color: #fff; border-bottom: 2px solid #e9ecef; font-weight: bold; }
-        .value-bet-row { transition: background-color 0.2s; }
-        .value-bet-row:hover { background-color: #e9ecef; }
-        .positive-ev { color: #198754; font-weight: bold; }
-        .loading { text-align: center; padding: 50px; color: #6c757d; }
+        body { background-color: #1a1a2e; color: #eee; }
+        .card { margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: none; background-color: #16213e; }
+        .card-header { background-color: #0f3460; border-bottom: 1px solid #1a1a2e; font-weight: bold; color: #fff; }
+        .table { color: #eee; }
+        .table thead th { border-bottom: 2px solid #0f3460; color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; }
+        .table td { border-color: #1a1a2e; vertical-align: middle; }
+        .table-hover tbody tr:hover { background-color: rgba(15, 52, 96, 0.5); }
+        .value-bet-row:hover { background-color: rgba(25, 135, 84, 0.2); }
+        .positive-ev { color: #4ade80; font-weight: bold; }
+        .loading { text-align: center; padding: 50px; color: #94a3b8; }
+        .navbar { background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%); }
+        .prob-high { color: #4ade80; }
+        .prob-med { color: #fbbf24; }
+        .prob-low { color: #94a3b8; }
+        .badge-division { font-size: 0.7rem; padding: 3px 6px; }
+        .sim-info { font-size: 0.85rem; color: #94a3b8; }
+        .btn-simulate { background: linear-gradient(135deg, #e94560 0%, #c23a51 100%); border: none; }
+        .btn-simulate:hover { background: linear-gradient(135deg, #c23a51 0%, #a62f43 100%); }
+        .division-header { background-color: #0f3460; padding: 8px 12px; font-weight: bold; font-size: 0.9rem; }
+        .standings-row td:first-child { font-weight: 500; }
+        .win-pct { font-family: monospace; }
+        .tab-content { padding-top: 20px; }
+        .nav-tabs { border-bottom: 2px solid #0f3460; }
+        .nav-tabs .nav-link { color: #94a3b8; border: none; }
+        .nav-tabs .nav-link.active { background-color: #0f3460; color: #fff; border: none; }
+        .nav-tabs .nav-link:hover { border: none; color: #fff; }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-    <div class="container">
-        <a class="navbar-brand" href="#">⚾ MLB Edge Tracker</a>
+<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand" href="#">MLB Edge Tracker</a>
+        <div class="d-flex align-items-center">
+            <span id="sim-info" class="sim-info me-3"></span>
+            <button class="btn btn-simulate btn-sm text-white" onclick="runSimulation()">
+                Run Simulation
+            </button>
+        </div>
     </div>
 </nav>
 
-<div class="container">
-    
+<div class="container-fluid px-4">
+
     <!-- Top Row: Betting Value -->
     <div class="row">
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>🔥 High Value Betting Opportunities</span>
-                    <button class="btn btn-sm btn-outline-primary" onclick="loadBettingValue()">Refresh Odds</button>
+                    <span>High Value Betting Opportunities</span>
+                    <button class="btn btn-sm btn-outline-light" onclick="loadBettingValue()">Refresh</button>
                 </div>
                 <div class="card-body">
-                    <div id="betting-loading" class="loading">Finding value...</div>
+                    <div id="betting-loading" class="loading">Analyzing odds...</div>
                     <div class="table-responsive">
                         <table class="table table-hover d-none" id="betting-table">
                             <thead>
@@ -47,33 +70,106 @@
                                     <th>Model Win %</th>
                                     <th>Market Odds</th>
                                     <th>Implied Prob</th>
-                                    <th>Expected Value (EV)</th>
+                                    <th>Expected Value</th>
                                 </tr>
                             </thead>
                             <tbody id="betting-data"></tbody>
                         </table>
                     </div>
-                    <div id="no-bets" class="alert alert-info d-none">No positive value bets found right now. Market is efficient!</div>
+                    <div id="no-bets" class="alert alert-secondary d-none">No positive value bets found. Market is efficient.</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Second Row: Championship Probabilities -->
+    <!-- Second Row: Standings & Probabilities Side by Side -->
     <div class="row">
-        <div class="col-lg-6">
+        <!-- Standings Column -->
+        <div class="col-lg-5">
             <div class="card">
-                <div class="card-header">🏆 World Series Probabilities</div>
-                <div class="card-body">
-                    <div id="ws-chart"></div>
+                <div class="card-header">Current Standings</div>
+                <div class="card-body p-0">
+                    <ul class="nav nav-tabs px-3 pt-2" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#al-standings">AL</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#nl-standings">NL</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content" id="standings-content">
+                        <div class="tab-pane fade show active" id="al-standings">
+                            <div id="al-standings-loading" class="loading">Loading standings...</div>
+                            <div id="al-standings-data"></div>
+                        </div>
+                        <div class="tab-pane fade" id="nl-standings">
+                            <div id="nl-standings-loading" class="loading">Loading standings...</div>
+                            <div id="nl-standings-data"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-6">
+
+        <!-- Probabilities Column -->
+        <div class="col-lg-7">
             <div class="card">
-                <div class="card-header">⚾ Playoff Berth Probabilities</div>
+                <div class="card-header">Championship Probabilities</div>
                 <div class="card-body">
-                    <div id="playoff-chart"></div>
+                    <ul class="nav nav-tabs" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#ws-tab">World Series</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pennant-tab">Pennant</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#playoff-tab">Playoffs</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#division-tab">Division</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="ws-tab">
+                            <div id="ws-chart" style="height: 350px;"></div>
+                        </div>
+                        <div class="tab-pane fade" id="pennant-tab">
+                            <div id="pennant-chart" style="height: 350px;"></div>
+                        </div>
+                        <div class="tab-pane fade" id="playoff-tab">
+                            <div id="playoff-chart" style="height: 350px;"></div>
+                        </div>
+                        <div class="tab-pane fade" id="division-tab">
+                            <div id="division-chart" style="height: 350px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Third Row: Full Probability Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">All Team Probabilities</div>
+                <div class="card-body">
+                    <div id="probs-loading" class="loading">Loading probabilities...</div>
+                    <div class="table-responsive">
+                        <table class="table table-hover d-none" id="probs-table">
+                            <thead>
+                                <tr>
+                                    <th>Team</th>
+                                    <th class="text-end">Division</th>
+                                    <th class="text-end">Playoffs</th>
+                                    <th class="text-end">Pennant</th>
+                                    <th class="text-end">World Series</th>
+                                </tr>
+                            </thead>
+                            <tbody id="probs-data"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -81,8 +177,29 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // --- Betting Value Logic ---
+    const plotlyLayout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#94a3b8' },
+        margin: { t: 20, b: 100, l: 50, r: 20 },
+        xaxis: { tickangle: -45 },
+        yaxis: { title: 'Probability (%)', gridcolor: '#1a1a2e' }
+    };
+
+    const plotlyConfig = { responsive: true, displayModeBar: false };
+
+    // Format probability with color class
+    function formatProb(prob) {
+        const pct = (prob * 100).toFixed(1);
+        let cls = 'prob-low';
+        if (prob >= 0.5) cls = 'prob-high';
+        else if (prob >= 0.2) cls = 'prob-med';
+        return `<span class="${cls}">${pct}%</span>`;
+    }
+
+    // --- Betting Value ---
     async function loadBettingValue() {
         const loading = document.getElementById('betting-loading');
         const table = document.getElementById('betting-table');
@@ -97,7 +214,6 @@
         try {
             const response = await fetch('/betting-value');
             const data = await response.json();
-
             loading.classList.add('d-none');
 
             if (data.opportunities && data.opportunities.length > 0) {
@@ -124,69 +240,198 @@
         }
     }
 
-    // --- Simulation Results Logic ---
+    // --- Standings ---
+    async function loadStandings() {
+        try {
+            const response = await fetch('/standings');
+            const data = await response.json();
+
+            if (data.error || !data) {
+                document.getElementById('al-standings-loading').innerText = 'No standings data available';
+                document.getElementById('nl-standings-loading').innerText = 'No standings data available';
+                return;
+            }
+
+            // API returns {divisionId: {div_name, teams: [...]}, ...}
+            renderStandings(data, 'American', 'al-standings-data', 'al-standings-loading');
+            renderStandings(data, 'National', 'nl-standings-data', 'nl-standings-loading');
+        } catch (error) {
+            console.error("Error loading standings:", error);
+            document.getElementById('al-standings-loading').innerText = 'Error loading standings';
+            document.getElementById('nl-standings-loading').innerText = 'Error loading standings';
+        }
+    }
+
+    function renderStandings(data, leagueKeyword, containerId, loadingId) {
+        const container = document.getElementById(containerId);
+        const loading = document.getElementById(loadingId);
+
+        // Filter divisions by league keyword (American or National)
+        const leagueDivisions = Object.entries(data)
+            .filter(([id, div]) => div.div_name && div.div_name.includes(leagueKeyword))
+            .sort((a, b) => a[1].div_name.localeCompare(b[1].div_name));
+
+        let html = '';
+
+        leagueDivisions.forEach(([divId, div]) => {
+            const teams = div.teams.sort((a, b) => b.w - a.w);
+
+            html += `<div class="division-header">${div.div_name}</div>`;
+            html += `<table class="table table-sm mb-0">
+                <thead><tr>
+                    <th style="width:40%">Team</th>
+                    <th class="text-center">W</th>
+                    <th class="text-center">L</th>
+                    <th class="text-center">Pct</th>
+                    <th class="text-center">GB</th>
+                </tr></thead><tbody>`;
+
+            teams.forEach((t, idx) => {
+                const pct = t.w / (t.w + t.l);
+                const gb = idx === 0 ? '-' : t.gb || '-';
+                html += `<tr class="standings-row">
+                    <td>${t.name}</td>
+                    <td class="text-center">${t.w}</td>
+                    <td class="text-center">${t.l}</td>
+                    <td class="text-center win-pct">${pct.toFixed(3).slice(1)}</td>
+                    <td class="text-center">${gb}</td>
+                </tr>`;
+            });
+
+            html += `</tbody></table>`;
+        });
+
+        loading.classList.add('d-none');
+        container.innerHTML = html;
+    }
+
+    // --- Simulation Results ---
     async function loadSimulationResults() {
         try {
-            // Try to get cached results first
             let response = await fetch('/api/latest-simulation');
+            let data;
+
             if (!response.ok) {
-                // If no cached results, trigger a quick simulation (for demo purposes)
-                response = await fetch('/simulate?iterations=100');
+                document.getElementById('probs-loading').innerText = 'No simulation data. Click "Run Simulation" to generate.';
+                return;
             }
-            
-            const data = await response.json();
+
+            data = await response.json();
             const probs = data.probabilities;
 
-            // Prepare Data for Plotly
-            const teams = [];
-            const wsProbs = [];
-            const playoffProbs = [];
+            // Update simulation info
+            const simInfo = document.getElementById('sim-info');
+            const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Unknown';
+            simInfo.innerHTML = `Last run: ${timestamp} (${data.iterations} iterations)`;
 
+            // Prepare data
+            const teams = [];
             for (const [id, stats] of Object.entries(probs)) {
-                if (stats.playoff_spot > 0.05) { // Filter out low-prob teams for cleaner chart
-                    teams.push(stats.name);
-                    wsProbs.push(stats.world_series_winner * 100);
-                    playoffProbs.push(stats.playoff_spot * 100);
-                }
+                teams.push({
+                    name: stats.name,
+                    division: stats.division_winner || 0,
+                    playoff: stats.playoff_spot || 0,
+                    pennant: stats.league_champion || 0,
+                    ws: stats.world_series_winner || 0
+                });
             }
 
-            // Sort by World Series Prob
-            const combined = teams.map((t, i) => ({ team: t, ws: wsProbs[i], playoff: playoffProbs[i] }));
-            combined.sort((a, b) => b.ws - a.ws);
+            // Store for tab switching
+            simulationData = teams;
 
-            // Chart 1: World Series
-            Plotly.newPlot('ws-chart', [{
-                x: combined.map(x => x.team),
-                y: combined.map(x => x.ws),
-                type: 'bar',
-                marker: { color: '#0d6efd' }
-            }], {
-                margin: { t: 10, b: 80 },
-                yaxis: { title: 'Probability (%)' }
-            });
+            // Render charts (only WS is visible initially)
+            renderChart('ws-chart', teams, 'ws', '#e94560');
 
-            // Chart 2: Playoffs
-            // Sort by Playoff Prob for this chart
-            combined.sort((a, b) => b.playoff - a.playoff);
-            Plotly.newPlot('playoff-chart', [{
-                x: combined.map(x => x.team),
-                y: combined.map(x => x.playoff),
-                type: 'bar',
-                marker: { color: '#198754' }
-            }], {
-                margin: { t: 10, b: 80 },
-                yaxis: { title: 'Probability (%)' }
-            });
+            // Render probability table
+            renderProbTable(teams);
 
         } catch (error) {
             console.error("Error loading simulation results:", error);
-            document.getElementById('ws-chart').innerText = "Error loading charts.";
+            document.getElementById('probs-loading').innerText = 'Error loading simulation data.';
         }
     }
+
+    function renderChart(elementId, teams, field, color) {
+        const sorted = [...teams].sort((a, b) => b[field] - a[field]).slice(0, 15);
+
+        Plotly.newPlot(elementId, [{
+            x: sorted.map(t => t.name),
+            y: sorted.map(t => t[field] * 100),
+            type: 'bar',
+            marker: { color: color }
+        }], plotlyLayout, plotlyConfig);
+    }
+
+    function renderProbTable(teams) {
+        const loading = document.getElementById('probs-loading');
+        const table = document.getElementById('probs-table');
+        const tbody = document.getElementById('probs-data');
+
+        const sorted = [...teams].sort((a, b) => b.ws - a.ws);
+
+        tbody.innerHTML = '';
+        sorted.forEach(t => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${t.name}</td>
+                <td class="text-end">${formatProb(t.division)}</td>
+                <td class="text-end">${formatProb(t.playoff)}</td>
+                <td class="text-end">${formatProb(t.pennant)}</td>
+                <td class="text-end">${formatProb(t.ws)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        loading.classList.add('d-none');
+        table.classList.remove('d-none');
+    }
+
+    // --- Run Simulation ---
+    let simulationData = null;
+
+    async function runSimulation() {
+        const btn = document.querySelector('.btn-simulate');
+        btn.disabled = true;
+        btn.innerText = 'Running...';
+
+        try {
+            const response = await fetch('/simulate?iterations=500');
+            if (response.ok) {
+                // Wait a moment for DB to save, then reload
+                setTimeout(async () => {
+                    await loadSimulationResults();
+                    btn.disabled = false;
+                    btn.innerText = 'Run Simulation';
+                }, 500);
+            } else {
+                console.error("Simulation failed:", await response.text());
+                btn.disabled = false;
+                btn.innerText = 'Run Simulation';
+            }
+        } catch (error) {
+            console.error("Error running simulation:", error);
+            btn.disabled = false;
+            btn.innerText = 'Run Simulation';
+        }
+    }
+
+    // Re-render charts when tabs are shown (Plotly needs visible container)
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', (e) => {
+            if (simulationData) {
+                const targetId = e.target.getAttribute('data-bs-target');
+                if (targetId === '#ws-tab') renderChart('ws-chart', simulationData, 'ws', '#e94560');
+                if (targetId === '#pennant-tab') renderChart('pennant-chart', simulationData, 'pennant', '#fbbf24');
+                if (targetId === '#playoff-tab') renderChart('playoff-chart', simulationData, 'playoff', '#4ade80');
+                if (targetId === '#division-tab') renderChart('division-chart', simulationData, 'division', '#60a5fa');
+            }
+        });
+    });
 
     // Initial Load
     document.addEventListener('DOMContentLoaded', () => {
         loadBettingValue();
+        loadStandings();
         loadSimulationResults();
     });
 </script>

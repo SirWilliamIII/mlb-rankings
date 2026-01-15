@@ -43,13 +43,13 @@ def betting_value():
     # Get upcoming games (just next 15 for demo)
     teams = mlb_api.get_teams_for_simulation()
     schedule = mlb_api.get_remaining_schedule()
-    
+
     if not teams or not schedule:
         return jsonify({"error": "Missing data."}), 500
-        
+
     next_games = schedule[:15]
     opportunities = betting_analyzer.analyze_schedule(next_games, teams)
-    
+
     return jsonify({
         "count": len(opportunities),
         "opportunities": opportunities
@@ -58,27 +58,27 @@ def betting_value():
 @app.route('/simulate')
 def simulate():
     iterations = request.args.get('iterations', default=100, type=int)
-    
+
     # 1. Get current data
     teams = mlb_api.get_teams_for_simulation()
     schedule = mlb_api.get_remaining_schedule()
-    
+
     if not teams or not schedule:
         return jsonify({"error": "Missing data for simulation."}), 500
-        
+
     # 2. Run simulation
     simulator = MonteCarloSimulator(teams, schedule, db_manager)
     simulator.run_simulation(iterations=iterations)
-    
+
     # 3. Get results
     probabilities = simulator.get_probabilities()
-    
+
     # 4. Enhance results with team names
     enhanced_probabilities = {}
     for team_id, probs in probabilities.items():
         enhanced_probabilities[team_id] = probs
         enhanced_probabilities[team_id]['name'] = teams[team_id]['name']
-    
+
     # 5. Save results to database
     run_id = db_manager.save_simulation_results(iterations, enhanced_probabilities)
 
@@ -89,4 +89,4 @@ def simulate():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5555)
