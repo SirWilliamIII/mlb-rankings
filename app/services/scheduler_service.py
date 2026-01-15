@@ -1,6 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.services.data_processor import DataProcessor
-from app.services.monte_carlo_simulator import MonteCarloSimulator
+from app.services.season_simulator import SeasonSimulator
 from app.services.mlb_api import MlbApi
 from app.services.database_manager import DatabaseManager
 import logging
@@ -46,7 +46,7 @@ class SchedulerService:
         if teams and schedule:
             logging.info("Running Daily Simulation...")
             # We run a high number of iterations for the daily cached result
-            simulator = MonteCarloSimulator(teams, schedule, self.db_manager)
+            simulator = SeasonSimulator(teams, schedule, self.db_manager)
             simulator.run_simulation(iterations=2000)
             
             # Save results

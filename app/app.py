@@ -1,15 +1,17 @@
 # app/app.py
 from flask import Flask, jsonify, request, render_template
 from app.services.mlb_api import MlbApi
-from app.services.monte_carlo_simulator import MonteCarloSimulator
+from app.services.season_simulator import SeasonSimulator
 from app.services.database_manager import DatabaseManager
 from app.services.betting_analyzer import BettingAnalyzer
 from app.services.scheduler_service import SchedulerService
+from app.services.live_game_service import LiveGameService
 
 app = Flask(__name__)
 db_manager = DatabaseManager()
 mlb_api = MlbApi(db_manager)
 betting_analyzer = BettingAnalyzer(db_manager)
+live_service = LiveGameService(db_manager)
 
 # Initialize and Start Scheduler
 scheduler = SchedulerService()
@@ -18,6 +20,24 @@ scheduler.start()
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/live-dashboard')
+def live_dashboard():
+    """
+    Returns real-time data for the Sniper Dashboard.
+    """
+    try:
+        data = live_service.get_live_dashboard_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/sniper-logs')
+def sniper_logs():
+    """
+    Returns the history of generated signals.
+    """
+    return jsonify(live_service.get_signal_history())
 
 @app.route('/standings')
 def standings():
@@ -67,7 +87,7 @@ def simulate():
         return jsonify({"error": "Missing data for simulation."}), 500
 
     # 2. Run simulation
-    simulator = MonteCarloSimulator(teams, schedule, db_manager)
+    simulator = SeasonSimulator(teams, schedule, db_manager)
     simulator.run_simulation(iterations=iterations)
 
     # 3. Get results
@@ -89,4 +109,4 @@ def simulate():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5555)
+    app.run(debug=False, host='0.0.0.0', port=5555)

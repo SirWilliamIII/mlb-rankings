@@ -1,5 +1,6 @@
 import statsapi
 import logging
+import time
 from app.services.database_manager import DatabaseManager
 from app.services.sportsdata_client import SportsDataClient
 from app.services.mlb_api import MlbApi
@@ -20,6 +21,32 @@ class DataProcessor:
         self.db = db_manager if db_manager else DatabaseManager()
         self.sd_client = SportsDataClient()
         self.mlb_api = MlbApi(self.db)
+        # Latency Log Buffer
+        self.latency_records = []
+
+    def log_latency(self, source, event_timestamp, ingestion_timestamp=None):
+        """
+        Logs the latency between event occurrence and ingestion.
+        
+        Args:
+            source (str): Identifier for the data source (e.g., 'MLB_API', 'SportsBook_A').
+            event_timestamp (float): Unix timestamp when the event actually occurred.
+            ingestion_timestamp (float): Unix timestamp when the event was processed. Defaults to now.
+        """
+        if ingestion_timestamp is None:
+            ingestion_timestamp = time.time()
+            
+        latency_ms = (ingestion_timestamp - event_timestamp) * 1000
+        record = {
+            "source": source,
+            "event_ts": event_timestamp,
+            "ingest_ts": ingestion_timestamp,
+            "latency_ms": latency_ms
+        }
+        self.latency_records.append(record)
+        
+        # Log purely to file for analysis
+        logging.info(f"LATENCY_CHECK: Source={source} | Latency={latency_ms:.2f}ms | Lag={latency_ms/1000:.2f}s")
 
     def refresh_all_data(self, season=2025):
         """

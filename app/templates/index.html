@@ -51,6 +51,52 @@
 
 <div class="container-fluid px-4">
 
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>
+                        <span class="badge bg-danger me-2">LIVE</span>
+                        Sniper Mode Dashboard
+                    </span>
+                    <button class="btn btn-sm btn-outline-danger" onclick="toggleSniperMode()">
+                        <span id="sniper-status">START SCAN</span>
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="sniper-container" class="row d-none">
+                        <!-- Live Game Cards Injected Here -->
+                        <div class="col-12 text-center text-muted py-3">Waiting for live feed...</div>
+                    </div>
+                    
+                    <!-- Recent Activity Logs -->
+                    <div id="sniper-logs-container" class="mt-4 d-none">
+                        <h6 class="border-bottom border-secondary pb-2 mb-2 text-muted text-uppercase small">Recent Signals</h6>
+                        <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                            <table class="table table-sm table-dark table-hover small mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Game</th>
+                                        <th>Inning</th>
+                                        <th>Action</th>
+                                        <th>Odds</th>
+                                        <th>Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sniper-logs-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="sniper-placeholder" class="text-center text-muted py-3">
+                        Activate Sniper Mode to scan for live in-game inefficiencies.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Row: Betting Value -->
     <div class="row">
         <div class="col-12">
@@ -71,6 +117,8 @@
                                     <th>Market Odds</th>
                                     <th>Implied Prob</th>
                                     <th>Expected Value</th>
+                                    <th>Kelly Wager</th>
+                                    <th>Reason</th>
                                 </tr>
                             </thead>
                             <tbody id="betting-data"></tbody>
@@ -228,6 +276,8 @@
                         <td>${op.market_odds > 0 ? '+' + op.market_odds : op.market_odds}</td>
                         <td>${op.implied_prob}%</td>
                         <td class="positive-ev">+${op.ev_percent}%</td>
+                        <td>$${op.wager_amount} (${op.wager_percent}%)</td>
+                        <td class="small text-muted">${op.reason}</td>
                     `;
                     tbody.appendChild(row);
                 });
@@ -237,6 +287,139 @@
         } catch (error) {
             console.error("Error loading betting value:", error);
             loading.innerText = "Error loading data.";
+        }
+    }
+
+    // --- Sniper Mode ---
+    let sniperInterval = null;
+
+    function toggleSniperMode() {
+        const btnText = document.getElementById('sniper-status');
+        const container = document.getElementById('sniper-container');
+        const placeholder = document.getElementById('sniper-placeholder');
+
+        if (sniperInterval) {
+            // Turn OFF
+            clearInterval(sniperInterval);
+            sniperInterval = null;
+            btnText.innerText = "START SCAN";
+            container.classList.add('d-none');
+            document.getElementById('sniper-logs-container').classList.add('d-none');
+            placeholder.classList.remove('d-none');
+        } else {
+            // Turn ON
+            btnText.innerText = "STOP SCANNING";
+            container.classList.remove('d-none');
+            document.getElementById('sniper-logs-container').classList.remove('d-none');
+            placeholder.classList.add('d-none');
+            
+            fetchLiveData(); 
+            fetchSniperLogs(); // Initial fetch
+            
+            sniperInterval = setInterval(() => {
+                fetchLiveData();
+                fetchSniperLogs();
+            }, 5000);
+        }
+    }
+
+    async function fetchSniperLogs() {
+        try {
+            const response = await fetch('/api/sniper-logs');
+            const logs = await response.json();
+            const tbody = document.getElementById('sniper-logs-body');
+            
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No signals generated yet.</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            logs.forEach(log => {
+                html += `
+                    <tr>
+                        <td class="text-muted">${log.timestamp}</td>
+                        <td>${log.game}</td>
+                        <td>${log.inning}</td>
+                        <td><span class="badge bg-success">BET $${log.wager}</span></td>
+                        <td>${log.odds}</td>
+                        <td class="text-muted">${log.reason}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        } catch (error) {
+            console.error("Logs poll error:", error);
+        }
+    }
+
+    async function fetchLiveData() {
+        const container = document.getElementById('sniper-container');
+        try {
+            const response = await fetch('/api/live-dashboard');
+            const games = await response.json();
+            
+            if (!games || games.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center text-muted">No active games found.</div>';
+                return;
+            }
+
+            let html = '';
+            games.forEach(g => {
+                const signalClass = g.signal.action === 'BET' ? 'bg-success' : 'bg-secondary';
+                const alertBadge = g.pitcher.alert !== 'OK' ? `<span class="badge bg-warning text-dark">${g.pitcher.alert}</span>` : '';
+                
+                // Runners visual
+                const bases = `
+                    <span style="color: ${g.runners[2] ? '#ef4444' : '#334155'}">◆</span>
+                    <span style="color: ${g.runners[1] ? '#ef4444' : '#334155'}">◆</span>
+                    <span style="color: ${g.runners[0] ? '#ef4444' : '#334155'}">◆</span>
+                `;
+
+                html += `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card h-100 border-secondary">
+                        <div class="card-body">
+                            <h6 class="card-title d-flex justify-content-between">
+                                ${g.matchup}
+                                <span class="badge bg-dark">${g.score}</span>
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <small class="text-muted">${g.inning_state} | ${g.outs} Outs</small>
+                                <div class="bases-display">${bases}</div>
+                            </div>
+                            
+                            <div class="mb-2 p-2 bg-dark rounded">
+                                <div class="d-flex justify-content-between">
+                                    <small>P: ${g.pitcher.name}</small>
+                                    ${alertBadge}
+                                </div>
+                                <small class="text-muted">Mod: ${g.pitcher.modifier}</small>
+                            </div>
+
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Model: <b class="text-info">${g.model_prob}%</b></span>
+                                <span>Mkt: <b>${g.market_odds}</b></span>
+                            </div>
+
+                            <div class="alert ${g.signal.action === 'BET' ? 'alert-success' : 'alert-secondary'} p-2 mb-0">
+                                <div class="d-flex justify-content-between fw-bold">
+                                    <span>${g.signal.action}</span>
+                                    <span>${g.signal.wager}</span>
+                                </div>
+                                <small class="d-block mt-1 fst-italic" style="font-size: 0.75rem;">
+                                    ${g.signal.reason}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            });
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error("Sniper poll error:", error);
         }
     }
 

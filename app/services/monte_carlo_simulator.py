@@ -1,196 +1,268 @@
-# app/services/monte_carlo_simulator.py
-
-import copy
-import random
-from app.services.forecasting_model import ForecastingModel
+import numpy as np
+from app.services.state_engine import StateEngine
 
 class MonteCarloSimulator:
     """
-    The 'Monte Carlo Simulation Agent'. It orchestrates the season simulation.
+    High-performance Vectorized Monte Carlo Simulator for MLB Live Games.
+    Simulates 'Rest of Game' outcomes using Markov Chain transitions.
     """
 
-    def __init__(self, teams, schedule, db_manager=None):
-        """
-        Initializes the simulator with teams and the remaining schedule.
+    def __init__(self, state_engine=None):
+        self.state_engine = state_engine if state_engine else StateEngine()
+        
+        # Pre-compute matrices for vectorized operations
+        # Dimensions: 25 States (0-23 + End)
+        self.transition_matrix = np.zeros((25, 25))
+        self.run_matrix = np.zeros((25, 25))
+        
+        self._build_matrices()
+        
+        # Pre-compute Cumulative Distribution Function (CDF) for fast sampling
+        # We process the transition matrix into a CDF for each state row
+        self.cdf_matrix = np.cumsum(self.transition_matrix, axis=1)
 
-        Args:
-            teams (dict): A dictionary of teams indexed by ID.
-            schedule (list): A list of game dictionaries for the remaining season.
-            db_manager (DatabaseManager): Optional DB connection for advanced stats.
+    def _build_matrices(self):
         """
-        self.teams = teams
-        self.schedule = schedule
-        self.forecasting_model = ForecastingModel(db_manager)
-        self.simulations_run = 0
-        # Results tracking: {team_id: {milestone: count}}
-        self.results = {
-            team_id: {
-                "division_winner": 0,
-                "playoff_spot": 0,
-                "league_champion": 0,
-                "world_series_winner": 0,
-            } for team_id in teams
-        }
-
-    def run_simulation(self, iterations=1000):
+        Reconstructs the StateEngine's transition logic into 
+        Numpy-compatible Probability (P) and Run (R) matrices.
         """
-        Runs the full Monte Carlo simulation for the remainder of the season.
+        # Event Probabilities (Must match StateEngine)
+        p_out = 0.68
+        p_1b = 0.15
+        p_2b = 0.05
+        p_3b = 0.005
+        p_hr = 0.03
+        p_bb = 0.085
+        
+        # Re-iterate logic to capture Runs Scored, which StateEngine doesn't explicitly store in the matrix
+        for idx in range(24):
+            outs, r1, r2, r3 = self.state_engine.IDX_TO_STATE[idx]
+            
+            # 1. OUTS
+            if outs < 2:
+                next_state_out = self.state_engine.get_current_state_index(outs + 1, r1, r2, r3)
+                self.transition_matrix[idx, next_state_out] += p_out
+                self.run_matrix[idx, next_state_out] = 0 # 0 runs on generic out (ignoring sac flies for now)
+            else:
+                self.transition_matrix[idx, self.state_engine.END_STATE_IDX] += p_out
+                self.run_matrix[idx, self.state_engine.END_STATE_IDX] = 0
 
-        Args:
-            iterations (int): The number of times to simulate the season.
-        """
-        print(f"Running {iterations} simulations...")
-
-        for _ in range(iterations):
-            # 1. Initialize standings for this simulation run
-            sim_teams = copy.deepcopy(self.teams)
-            for team_id in sim_teams:
-                # Add current stats if they don't exist
-                if 'w' not in sim_teams[team_id]: sim_teams[team_id]['w'] = 0
-                if 'l' not in sim_teams[team_id]: sim_teams[team_id]['l'] = 0
-                
-            # 2. Simulate remaining games
-            for game in self.schedule:
-                home_id = game['home_id']
-                away_id = game['away_id']
-                
-                if home_id not in sim_teams or away_id not in sim_teams:
-                    continue
-                    
-                home_team = sim_teams[home_id]
-                away_team = sim_teams[away_id]
-                
-                winner_team = self.forecasting_model.predict_winner(home_team, away_team)
-                
-                if winner_team['id'] == home_id:
-                    sim_teams[home_id]['w'] += 1
-                    sim_teams[away_id]['l'] += 1
+            # 2. WALKS
+            new_r1, new_r2, new_r3 = 1, r1, r2
+            runs_bb = 0
+            if r1 == 1:
+                if r2 == 1:
+                    if r3 == 1:
+                        runs_bb = 1 # Bases loaded walk
+                    else:
+                        new_r3 = 1
                 else:
-                    sim_teams[away_id]['w'] += 1
-                    sim_teams[home_id]['l'] += 1
-
-            # 3. Determine playoff participants and winners
-            self._process_simulation_results(sim_teams)
-
-        self.simulations_run += iterations
-        print("Simulations complete.")
-
-    def get_probabilities(self):
-        """
-        Calculates and returns the probabilities for each team.
-        """
-        if self.simulations_run == 0:
-            return {}
-
-        probabilities = {}
-        for team_id, stats in self.results.items():
-            probabilities[team_id] = {
-                "division_winner": stats["division_winner"] / self.simulations_run,
-                "playoff_spot": stats["playoff_spot"] / self.simulations_run,
-                "league_champion": stats["league_champion"] / self.simulations_run,
-                "world_series_winner": stats["world_series_winner"] / self.simulations_run,
-            }
-        return probabilities
-
-    def _simulate_series(self, team1, team2, games_needed):
-        """
-        Simulates a playoff series (e.g., Best of 3, 5, 7).
-        Returns the winning team dict.
-        """
-        wins1 = 0
-        wins2 = 0
-        while wins1 < games_needed and wins2 < games_needed:
-            # Home field: Higher seed (better record) usually hosts.
-            # Simplified: Random home field or alternating.
-            # Ideally: Pass home field info. For now, assume team1 is higher seed/home.
-            winner = self.forecasting_model.predict_winner(team1, team2)
-            if winner['id'] == team1['id']:
-                wins1 += 1
+                    new_r2 = 1
             else:
-                wins2 += 1
-        
-        return team1 if wins1 == games_needed else team2
-
-    def _process_simulation_results(self, sim_teams):
-        """
-        Determines playoff qualifiers and simulates the full postseason bracket.
-        """
-        leagues = {"103": {}, "104": {}} # 103: American, 104: National
-        
-        # Organize teams by League and Division
-        for team_id, team in sim_teams.items():
-            l_id = str(team.get('league_id'))
-            d_id = str(team.get('division_id'))
-            if l_id not in leagues: continue
-            if d_id not in leagues[l_id]: leagues[l_id][d_id] = []
-            leagues[l_id][d_id].append(team)
-
-        league_champs = {}
-
-        # Process each League (AL/NL) independently
-        for l_id, divisions in leagues.items():
-            div_winners = []
-            all_teams_in_league = []
+                new_r2, new_r3 = r2, r3
             
-            # Determine Division Winners
-            for d_id, teams in divisions.items():
-                sorted_teams = sorted(teams, key=lambda x: x['w'], reverse=True)
-                div_winner = sorted_teams[0]
-                div_winners.append(div_winner)
-                self.results[div_winner['id']]["division_winner"] += 1
-                all_teams_in_league.extend(teams)
+            next_state_bb = self.state_engine.get_current_state_index(outs, new_r1, new_r2, new_r3)
+            self.transition_matrix[idx, next_state_bb] += p_bb
+            self.run_matrix[idx, next_state_bb] = runs_bb
 
-            # Determine Wild Cards (Top 3 non-division winners)
-            div_winner_ids = {t['id'] for t in div_winners}
-            non_winners = [t for t in all_teams_in_league if t['id'] not in div_winner_ids]
-            wild_cards = sorted(non_winners, key=lambda x: x['w'], reverse=True)[:3]
+            # 3. SINGLES (R2 scores, R3 scores)
+            # Assumption: R1 goes to 2nd, R2 scores, R3 scores
+            runs_1b = r3 + r2
+            next_state_1b = self.state_engine.get_current_state_index(outs, 1, 1 if r1 else 0, 0)
+            self.transition_matrix[idx, next_state_1b] += p_1b
+            self.run_matrix[idx, next_state_1b] = runs_1b
+
+            # 4. DOUBLES (R1->3, R2 scores, R3 scores)
+            runs_2b = r3 + r2
+            next_state_2b = self.state_engine.get_current_state_index(outs, 0, 1, 1 if r1 else 0)
+            self.transition_matrix[idx, next_state_2b] += p_2b
+            self.run_matrix[idx, next_state_2b] = runs_2b
+
+            # 5. TRIPLES (All score)
+            runs_3b = r1 + r2 + r3
+            next_state_3b = self.state_engine.get_current_state_index(outs, 0, 0, 1)
+            self.transition_matrix[idx, next_state_3b] += p_3b
+            self.run_matrix[idx, next_state_3b] = runs_3b
+
+            # 6. HOMERS (All + Batter score)
+            runs_hr = r1 + r2 + r3 + 1
+            next_state_hr = self.state_engine.get_current_state_index(outs, 0, 0, 0)
+            self.transition_matrix[idx, next_state_hr] += p_hr
+            self.run_matrix[idx, next_state_hr] = runs_hr
             
-            # Record Playoff Spots
-            playoff_field = div_winners + wild_cards
-            for t in playoff_field:
-                self.results[t['id']]["playoff_spot"] += 1
+            # Normalize probabilities (essential for random sampling)
+            row_sum = np.sum(self.transition_matrix[idx])
+            if row_sum > 0:
+                self.transition_matrix[idx] /= row_sum
                 
-            # --- SEEDING (1-6) ---
-            # Seeds 1-3: Division winners sorted by record
-            sorted_div_winners = sorted(div_winners, key=lambda x: x['w'], reverse=True)
-            # Seeds 4-6: Wild Cards sorted by record
-            sorted_wild_cards = sorted(wild_cards, key=lambda x: x['w'], reverse=True)
-            
-            seeds = {}
-            if len(sorted_div_winners) >= 3:
-                seeds[1] = sorted_div_winners[0]
-                seeds[2] = sorted_div_winners[1]
-                seeds[3] = sorted_div_winners[2]
-            else:
-                # Handle unexpected data (fewer than 3 divisions)
-                continue 
-            
-            if len(sorted_wild_cards) >= 3:
-                seeds[4] = sorted_wild_cards[0]
-                seeds[5] = sorted_wild_cards[1]
-                seeds[6] = sorted_wild_cards[2]
-            else:
-                continue
+        # End State Identity
+        self.transition_matrix[self.state_engine.END_STATE_IDX, self.state_engine.END_STATE_IDX] = 1.0
 
-            # --- WILD CARD ROUND (Best of 3) ---
-            # 1 and 2 have Byes
-            # 3 vs 6
-            winner_3v6 = self._simulate_series(seeds[3], seeds[6], 2)
-            # 4 vs 5
-            winner_4v5 = self._simulate_series(seeds[4], seeds[5], 2)
-            
-            # --- DIVISION SERIES (Best of 5) ---
-            # 1 vs winner_4v5
-            winner_lds_1 = self._simulate_series(seeds[1], winner_4v5, 3)
-            # 2 vs winner_3v6
-            winner_lds_2 = self._simulate_series(seeds[2], winner_3v6, 3)
-            
-            # --- LEAGUE CHAMPIONSHIP SERIES (Best of 7) ---
-            league_champion = self._simulate_series(winner_lds_1, winner_lds_2, 4)
-            self.results[league_champion['id']]["league_champion"] += 1
-            league_champs[l_id] = league_champion
+    def simulate_game_vectorized(self, initial_state_idx, home_score, away_score, inning, is_top, iterations=10000):
+        """
+        Simulates the remainder of the game N times using vectorized operations.
+        Returns win probability for the Home team.
+        """
+        n_sims = iterations
+        
+        # 1. Initialize State Vectors
+        # Current Base/Out State for each sim
+        current_states = np.full(n_sims, initial_state_idx, dtype=int)
+        
+        # Runs Scored in the remainder of the game (Home/Away)
+        # We track "runs added" separately.
+        runs_home = np.zeros(n_sims, dtype=int)
+        runs_away = np.zeros(n_sims, dtype=int)
+        
+        # Game Progress Tracking
+        current_innings = np.full(n_sims, inning, dtype=int)
+        is_top_inning = np.full(n_sims, is_top, dtype=bool) # True=Top(Away), False=Bot(Home)
+        game_over = np.zeros(n_sims, dtype=bool)
 
-        # --- WORLD SERIES (Best of 7) ---
-        if "103" in league_champs and "104" in league_champs:
-            ws_winner = self._simulate_series(league_champs["103"], league_champs["104"], 4)
-            self.results[ws_winner['id']]["world_series_winner"] += 1
+        # Simulation Loop (Step-by-step for all N sims)
+        # In baseball, max batters in an inning is theoretically infinite, but practically bounded.
+        # We loop until all games are over.
+        max_steps = 200 # Safety break
+        
+        for _ in range(max_steps):
+            if np.all(game_over):
+                break
+                
+            # Filter active games
+            active_mask = ~game_over
+            if not np.any(active_mask):
+                break
+                
+            active_indices = np.where(active_mask)[0]
+            active_states = current_states[active_mask]
+            
+            # --- Vectorized Transition ---
+            # Generate random numbers for transition
+            rand_vals = np.random.rand(len(active_indices))
+            
+            # Fast lookup of next state using CDF
+            # We select the column index where CDF > rand_val
+            # This is tricky to vectorize fully for different states (rows).
+            # Solution: Fancy Indexing with searchsorted is too slow for 2D.
+            # Faster approach for Matrix Sampling:
+            # Since N=25 states is small, we can iterate states? No, N_Sims is large (10k).
+            # We can use np.random.choice but it's slow in a loop.
+            # Best Vectorized Approach: 
+            #   current_cdf = self.cdf_matrix[active_states] # Shape (N_active, 25)
+            #   next_state_indices = (current_cdf < rand_vals[:, None]).sum(axis=1)
+            #   (Because CDF is cumulative, sum of "less thans" gives the index)
+            
+            current_cdf = self.cdf_matrix[active_states]
+            # Next state is the first index where random < cdf
+            # argmax on boolean array gives first True.
+            # condition: cdf >= random
+            next_states = (current_cdf >= rand_vals[:, None]).argmax(axis=1)
+            
+            # Get Runs Scored on this transition
+            # self.run_matrix is 25x25. We need values at [old, new]
+            transition_runs = self.run_matrix[active_states, next_states]
+            
+            # Update Runs
+            # If is_top (Away Batting), add to Away. Else Home.
+            # We need to apply this only to active sims
+            runs_away[active_indices] += (transition_runs * is_top_inning[active_mask]).astype(int)
+            runs_home[active_indices] += (transition_runs * (~is_top_inning[active_mask])).astype(int)
+            
+            # Update States
+            current_states[active_indices] = next_states
+            
+            # --- Handle Inning Changes ---
+            # If state reached END_STATE (3 Outs)
+            inning_end_mask = (current_states[active_indices] == self.state_engine.END_STATE_IDX)
+            
+            if np.any(inning_end_mask):
+                # Indices within the active set
+                ended_indices_local = np.where(inning_end_mask)[0]
+                ended_indices_global = active_indices[ended_indices_local]
+                
+                # Reset State to 0 (0 Outs, Empty)
+                current_states[ended_indices_global] = 0
+                
+                # Flip Inning Side / Increment Inning
+                # If Top -> Bot (Same Inning)
+                # If Bot -> Top (Next Inning)
+                
+                # We need to update is_top and inning vectors
+                # Logic: if is_top: is_top=False. else: is_top=True, inning+=1
+                
+                # Vectorized Update:
+                # 1. Identify Top endings
+                top_end_mask = is_top_inning[ended_indices_global]
+                
+                # 2. Identify Bot endings
+                bot_end_mask = ~top_end_mask
+                
+                # Global indices for Top/Bot endings
+                top_end_global = ended_indices_global[top_end_mask]
+                bot_end_global = ended_indices_global[bot_end_mask]
+                
+                # Apply updates
+                is_top_inning[top_end_global] = False # Top -> Bot
+                
+                is_top_inning[bot_end_global] = True # Bot -> Top
+                current_innings[bot_end_global] += 1 # Increment Inning
+                
+            # --- Check Game Over Conditions ---
+            # Recalculate Totals
+            total_home = home_score + runs_home
+            total_away = away_score + runs_away
+            
+            # Condition 1: Middle of 9th (or later) and Home leads
+            # (Inning >= 9 AND is_top=False AND Home > Away)
+            # wait, middle of 9th is when Top 9 ends.
+            # So if Inning >= 9 AND just finished Top (now is_top is False) AND Home > Away.
+            
+            # Condition 2: End of 9th (or later) and Away leads
+            # (Inning >= 10 AND is_top=True AND Away > Home) -- wait, if 9th ends, inning becomes 10, is_top becomes True.
+            
+            # Let's simplify:
+            # Game Over if:
+            # 1. Inning >= 9
+            # 2. AND (
+            #      (is_top=False AND total_home > total_away)  # Home winning in bottom (Walkoff or Mid-Inning)
+            #      OR 
+            #      (is_top=True AND Inning >= 10 AND total_away != total_home) # End of full inning (after Bot 9/10/etc) and not tied
+            #    )
+            # Wait, "End of full inning" means we are ABOUT to start Top of Next Inning.
+            # So if current_state is 0 (start of inning) and inning >= 10.
+            
+            # Actually, check strictly at transition points or state changes is safer.
+            
+            # Simplified Logic check for vector:
+            cond_9plus = (current_innings >= 9)
+            cond_home_leads = (total_home > total_away)
+            cond_away_leads = (total_away > total_home)
+            cond_bot = (~is_top_inning)
+            cond_top = (is_top_inning)
+            
+            # Walkoff / Home Leads in Bottom 9+
+            win_home_mask = cond_9plus & cond_bot & cond_home_leads
+            
+            # Away Wins: End of Bottom 9+ (so start of Top 10+) and Away Leads
+            # Note: "End of Bottom 9" transitions to "Start of Top 10"
+            # So if we are at Start of Top 10 (State 0) and Away Leads...
+            win_away_mask = cond_9plus & cond_top & cond_away_leads & (current_states == 0) & (current_innings > 9)
+            
+            # Wait, standard regulation end:
+            # End of 9th inning. Inning becomes 10, is_top becomes True.
+            # If Away > Home, Away wins.
+            # If Home > Away, Home won already (caught by win_home_mask).
+            # If Tie, continue.
+            
+            over_mask = win_home_mask | win_away_mask
+            game_over[over_mask] = True
+            
+        # 3. Calculate Win %
+        final_home = home_score + runs_home
+        final_away = away_score + runs_away
+        home_wins = np.sum(final_home > final_away)
+        
+        return home_wins / n_sims
+
+# Alias for backward compatibility
+GameSimulator = MonteCarloSimulator

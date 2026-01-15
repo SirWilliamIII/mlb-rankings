@@ -40,10 +40,66 @@ class StateEngine:
         # Initialize with zeros
         matrix = np.zeros((25, 25))
         
-        # This is a complex matrix to fill manually with accuracy.
-        # For now, we will use a simplified transition logic:
-        # Every state has a probability to move to another state or end the inning.
-        # We'll refine this with real matchup data.
+        # Simplified MLB Transition Probabilities (Approximate League Averages)
+        # Event Probabilities:
+        # Out: 0.68, 1B: 0.15, 2B: 0.05, 3B: 0.005, HR: 0.03, BB/HBP: 0.085
+        
+        # These basic event probabilities map to state transitions depending on the current state.
+        # This is a simplified "Bucket" model where runners advance standard amounts.
+        
+        p_out = 0.68
+        p_1b = 0.15
+        p_2b = 0.05
+        p_3b = 0.005
+        p_hr = 0.03
+        p_bb = 0.085
+        
+        # We iterate through all 24 base/out states to define their transitions
+        for idx in range(24):
+            outs, r1, r2, r3 = self.IDX_TO_STATE[idx]
+            
+            # 1. OUTS
+            if outs < 2:
+                next_state_out = self.get_current_state_index(outs + 1, r1, r2, r3)
+                matrix[idx, next_state_out] += p_out
+            else:
+                matrix[idx, self.END_STATE_IDX] += p_out
+
+            # 2. WALKS (Force plays only)
+            # If 1st is empty, runner goes to 1st.
+            # If 1st occupied, r1->2. If 2nd occupied, r2->3. If 3rd occupied, run scores (state unchanged w.r.t runners except force)
+            new_r1, new_r2, new_r3 = 1, r1, r2 # Default walk logic (force)
+            if r1 == 0: new_r2, new_r3 = r2, r3 # No force at 2nd/3rd
+            elif r2 == 0: new_r3 = r3 # No force at 3rd
+            
+            next_state_bb = self.get_current_state_index(outs, new_r1, new_r2, new_r3)
+            matrix[idx, next_state_bb] += p_bb
+
+            # 3. SINGLES (Assume runner on 2nd scores, runner on 1st goes to 2nd)
+            # Standard: R1->2, R2->Score, R3->Score
+            next_state_1b = self.get_current_state_index(outs, 1, (1 if r1 else 0), 0)
+            matrix[idx, next_state_1b] += p_1b
+
+            # 4. DOUBLES (Assume R1->3, R2->Score, R3->Score)
+            next_state_2b = self.get_current_state_index(outs, 0, 1, (1 if r1 else 0))
+            matrix[idx, next_state_2b] += p_2b
+
+            # 5. TRIPLES (Clear bases, runner on 3rd)
+            next_state_3b = self.get_current_state_index(outs, 0, 0, 1)
+            matrix[idx, next_state_3b] += p_3b
+
+            # 6. HOMERS (Clear bases)
+            next_state_hr = self.get_current_state_index(outs, 0, 0, 0)
+            matrix[idx, next_state_hr] += p_hr
+            
+            # Normalize row (handle rounding errors)
+            row_sum = np.sum(matrix[idx])
+            if row_sum > 0:
+                matrix[idx] /= row_sum
+                
+        # End state stays in end state
+        matrix[self.END_STATE_IDX, self.END_STATE_IDX] = 1.0
+
         return matrix
 
     def get_current_state_index(self, outs, runner_on_1st, runner_on_2nd, runner_on_3rd):

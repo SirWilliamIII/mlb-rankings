@@ -1,29 +1,15 @@
 from app.services.forecasting_model import ForecastingModel
+from app.services.trader_agent import TraderAgent
 import random
 
 class BettingAnalyzer:
     """
-    Analyzes games to find betting value (Edge).
+    Analyzes games to find betting value (Edge) using the TraderAgent.
     """
 
     def __init__(self, db_manager):
         self.forecasting_model = ForecastingModel(db_manager)
-
-    def american_to_decimal(self, american_odds):
-        """Converts American odds (e.g., -110, +150) to Decimal odds (e.g., 1.91, 2.50)."""
-        if american_odds > 0:
-            return 1 + (american_odds / 100)
-        else:
-            return 1 + (100 / abs(american_odds))
-
-    def calculate_ev(self, win_prob, american_odds):
-        """
-        Calculates Expected Value (EV).
-        EV = (Probability * DecimalOdds) - 1
-        Returns percentage (e.g., 0.05 for 5% edge).
-        """
-        decimal_odds = self.american_to_decimal(american_odds)
-        return (win_prob * decimal_odds) - 1
+        self.trader_agent = TraderAgent()
 
     def generate_mock_odds(self, home_prob):
         """
@@ -64,27 +50,31 @@ class BettingAnalyzer:
             home_prob = self.forecasting_model.get_matchup_probability(home_team, away_team)
             
             # 2. Get Market Odds (Mocked for now)
-            # In real app: odds = sportsdata_client.get_odds(game_id)
-            # We mock odds slightly different from our model to create "Edge" cases
             variance = random.uniform(-0.10, 0.10) # Market disagrees by up to 10%
             market_home_prob = min(max(home_prob + variance, 0.20), 0.80)
             
             home_odds = self.generate_mock_odds(market_home_prob)
-            away_odds = self.generate_mock_odds(1 - market_home_prob)
             
-            # 3. Calculate EV
-            home_ev = self.calculate_ev(home_prob, home_odds)
+            # 3. Evaluate Trade (Using Trader Agent)
+            trade_decision = self.trader_agent.evaluate_trade(
+                model_prob=home_prob,
+                market_odds_american=home_odds,
+                game_context={'inning': 1, 'score_diff': 0} # Default pre-game context
+            )
             
-            # 4. Filter for Value (Positive EV)
-            if home_ev > 0:
+            # 4. Filter for Actionable Bets
+            if trade_decision['action'] == "BET":
                 insights.append({
                     "game": f"{away_team['name']} @ {home_team['name']}",
                     "bet_on": home_team['name'],
                     "model_prob": round(home_prob * 100, 1),
                     "market_odds": home_odds,
-                    "implied_prob": round((1/self.american_to_decimal(home_odds))*100, 1),
-                    "ev_percent": round(home_ev * 100, 1)
+                    "implied_prob": round(trade_decision['implied_prob'] * 100, 1),
+                    "ev_percent": round(trade_decision['edge'] * 100, 1), # Mapping edge to ev_percent
+                    "wager_amount": trade_decision['wager_amount'],
+                    "wager_percent": round(trade_decision['wager_percent'] * 100, 2),
+                    "reason": trade_decision['reason']
                 })
         
-        # Sort by best EV
+        # Sort by best EV/Edge
         return sorted(insights, key=lambda x: x['ev_percent'], reverse=True)

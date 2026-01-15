@@ -11,6 +11,20 @@ class MlbApi:
     def __init__(self, db_manager=None):
         self.db = db_manager if db_manager else DatabaseManager()
 
+    def get_schedule(self, date=None):
+        """
+        Fetches the schedule for a specific date (YYYY-MM-DD).
+        If date is None, defaults to today.
+        """
+        if date is None:
+            date = datetime.now().strftime('%Y-%m-%d')
+            
+        try:
+            return statsapi.schedule(date=date)
+        except Exception as e:
+            print(f"Error fetching schedule for {date}: {e}")
+            return []
+
     def get_standings(self):
         """
         Fetches the current league standings.
