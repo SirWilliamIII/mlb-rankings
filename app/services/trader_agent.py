@@ -77,19 +77,20 @@ class TraderAgent:
             reason = f"No Edge (EV: {d_ev:.2%}, Min: {self.min_edge:.2%})"
             return self._build_response("PASS", reason, Decimal("0.0"), d_implied_prob, d_edge)
 
-        # 5. Calculate Position Size (Kelly Criterion)
-        d_raw_kelly = self._calculate_raw_kelly(d_model_prob, d_decimal_odds)
+        # --- LEVEL 300: LEVERAGE SCALING ---
+        raw_kelly = self._calculate_raw_kelly(d_model_prob, d_decimal_odds)
         
-        # --- CRITICAL FIX: Leverage Scaling ---
-        # Scale bet size based on Game Leverage Index (High LI = Bigger Bet)
+        # Get LI (Default to 1.0 if missing)
         li = game_context.get('leverage_index', 1.0) if game_context else 1.0
         d_li = Decimal(str(li))
-        # Scale from 0.5x (Low Leverage) to 1.5x (High Leverage)
-        # Formula: min(max(0.5, li * 0.5 + 0.5), 1.5)
-        d_leverage_multiplier = min(max(Decimal("0.5"), d_li * Decimal("0.5") + Decimal("0.5")), Decimal("1.5"))
         
-        d_wager_pct = d_raw_kelly * d_leverage_multiplier
-        # --------------------------------------
+        # Scale: 0.5x (Low Leverage) -> 1.5x (High Leverage)
+        # Logic: Cap downward at 0.5, cap upward at 1.5. 
+        # Linear map: LI=0 -> 0.5, LI=1 -> 1.0, LI=2 -> 1.5
+        leverage_multiplier = min(max(Decimal("0.5"), d_li * Decimal("0.5") + Decimal("0.5")), Decimal("1.5"))
+        
+        d_wager_pct = raw_kelly * leverage_multiplier
+        # -----------------------------------
         
         # Apply limits
         d_wager_pct = min(d_wager_pct, self.max_wager_limit)

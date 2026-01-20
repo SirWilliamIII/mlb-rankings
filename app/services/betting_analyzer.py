@@ -6,6 +6,7 @@ from decimal import Decimal
 class BettingAnalyzer:
     """
     Analyzes games to find betting value (Edge) using the TraderAgent.
+    Level 300 Update: Implements Vig Removal and Fair Price Discovery.
     """
 
     def __init__(self, db_manager):
@@ -13,18 +14,13 @@ class BettingAnalyzer:
         self.trader_agent = TraderAgent()
 
     def generate_mock_odds(self, home_prob):
-        """
-        Generates realistic market odds based on a 'true' probability but with vig.
-        """
+        """Generates realistic market odds with vig."""
         fair_decimal = 1 / home_prob
-        market_decimal = fair_decimal * 0.95 # Add vig (worse odds)
-        
-        # Convert back to American for display
+        market_decimal = fair_decimal * 0.95 # Add vig
         if market_decimal >= 2.0:
             odds = (market_decimal - 1) * 100
         else:
             odds = -100 / (market_decimal - 1)
-            
         return int(odds)
 
     def remove_vig(self, home_odds, away_odds):
