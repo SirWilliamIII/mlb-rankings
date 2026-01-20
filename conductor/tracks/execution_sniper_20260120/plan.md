@@ -1,9 +1,9 @@
 # Implementation Plan: Phase 3 - Execution & Sniper
 
 ## Phase 1: Market & Staking Intelligence
-- [ ] Task: Implement Multiplicative Vig Removal
-    - [ ] TDD: Write tests for `BettingAnalyzer.remove_vig` with varying market spreads.
-    - [ ] Implement the normalization logic in `app/services/betting_analyzer.py`.
+- [x] Task: Implement Multiplicative Vig Removal
+    - [x] TDD: Write tests for `BettingAnalyzer.remove_vig` with varying market spreads.
+    - [x] Implement the normalization logic in `app/services/betting_analyzer.py`.
 - [ ] Task: Leverage-Scaled Staking Logic
     - [ ] Update `TraderAgent` to accept `leverage_index` in the decision context.
     - [ ] Implement scaling formula: `wager = Base_Kelly * min(LI, 2.0)`.

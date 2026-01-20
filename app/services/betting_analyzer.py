@@ -30,6 +30,28 @@ class BettingAnalyzer:
             
         return int(odds)
 
+    def remove_vig(self, home_odds, away_odds):
+        """
+        Removes the vig (overround) from the market odds using the Multiplicative Method.
+        Returns: (fair_home_prob, fair_away_prob)
+        """
+        implied_home = self._american_to_implied_prob(home_odds)
+        implied_away = self._american_to_implied_prob(away_odds)
+        
+        total_implied = implied_home + implied_away
+        
+        fair_home = implied_home / total_implied
+        fair_away = implied_away / total_implied
+        
+        return fair_home, fair_away
+
+    def _american_to_implied_prob(self, odds):
+        """Helper to convert American odds to implied probability."""
+        if odds > 0:
+            return 100 / (odds + 100)
+        else:
+            return abs(odds) / (abs(odds) + 100)
+
     def analyze_schedule(self, schedule, teams):
         """
         Analyzes a list of games and returns value opportunities.
