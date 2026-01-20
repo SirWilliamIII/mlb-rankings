@@ -19,3 +19,9 @@ This file tracks all major tracks for the project. Each track has its own detail
 - [x] **Track: Phase 3: Execution & Sniper**
   *Link: [./tracks/execution_sniper_20260120/](./tracks/execution_sniper_20260120/)*
 
+
+---
+
+- [ ] **Track: Risk Mitigation & Hardening**
+  *Link: [./tracks/hardening_20260120/](./tracks/hardening_20260120/)*
+
