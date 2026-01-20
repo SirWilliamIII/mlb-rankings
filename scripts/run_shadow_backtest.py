@@ -8,6 +8,8 @@ from app.services.game_replay_service import GameReplayService
 from app.services.market_simulator import MarketSimulator
 from app.services.trader_agent import TraderAgent
 from app.services.state_engine import StateEngine
+from app.services.markov_chain_service import MarkovChainService
+from app.services.live_game_service import LiveGameService
 
 def run_backtest(game_pk):
     print(f"=== Starting Shadow Trader Backtest (Game {game_pk}) ===")
@@ -16,7 +18,7 @@ def run_backtest(game_pk):
     replay_service = GameReplayService()
     market_sim = MarketSimulator()
     trader = TraderAgent(bankroll=10000.0)
-    state_engine = StateEngine()
+    markov_service = MarkovChainService()
 
     bets_placed = []
     rejection_reasons = {}
@@ -34,20 +36,27 @@ def run_backtest(game_pk):
         )
         
         # 2. Get Sharp Model Prob (With Fatigue/TTTO Modifier)
-        sharp_prob = state_engine.get_win_probability(
-            event['home_score'],
-            event['away_score'],
-            event['inning'],
-            0 if event['is_top'] else 1,
-            event['state_idx'],
-            pitcher_modifier=event['pitcher_modifier']
+        # Using Phase 2 Markov Engine
+        # Reconstruct runners from state_idx
+        # IDX_TO_STATE[idx] -> (outs, r1, r2, r3)
+        state_tuple = markov_service.IDX_TO_STATE.get(event['state_idx'], (0, 0, 0, 0))
+        _, r1, r2, r3 = state_tuple
+
+        sharp_prob = markov_service.get_instant_win_prob(
+            inning=event['inning'],
+            outs=event['outs'],
+            runners=[r1, r2, r3],
+            score_diff=event['home_score'] - event['away_score'],
+            is_top_inning=event['is_top'],
+            pitcher_mod=event['pitcher_modifier']
         )
         
         # 3. Ask Trader for Decision
         context = {
             'inning': event['inning'], 
             'score_diff': abs(event['home_score'] - event['away_score']),
-            'description': event['description']
+            'description': event['description'],
+            'latency_safe': True # Assume safe for backtest
         }
         
         decision = trader.evaluate_trade(
