@@ -7,12 +7,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.services.game_replay_service import GameReplayService
 from app.services.market_simulator import MarketSimulator
 from app.services.trader_agent import TraderAgent
-from app.services.state_engine import StateEngine
 from app.services.markov_chain_service import MarkovChainService
 from app.services.live_game_service import LiveGameService
 
 def run_backtest(game_pk):
-    print(f"=== Starting Shadow Trader Backtest (Game {game_pk}) ===")
+# ... (rest of the function same)
+
     
     # Initialize Services
     replay_service = GameReplayService()
@@ -122,31 +122,7 @@ def run_backtest(game_pk):
         print(f"  {reason}: {count}")
     
 if __name__ == "__main__":
-    # Use a known game PK from 2024/2025 (or find one via script)
-    # 748534 is World Series Game 5 (Dodgers/Yankees 2024) - Example ID
-    # If that fails, the script will just print nothing.
-    # Let's try to find a valid one or user can provide.
-    
-    # We'll use a hardcoded one for now or fetch one via MlbApi if needed.
-    # Let's try a generic ID, or fetch recent.
-    
-    from app.services.mlb_api import MlbApi
-    api = MlbApi()
-    # Get a game from last season?
-    # For now, let's just pick one we used in testing or rely on user to provide.
-    # I'll use 748550 (random valid looking ID) or let's inspect.
-    
-    # Better: Fetch the first game from a specific date to ensure validity.
-    import statsapi
-    try:
-        schedule = statsapi.schedule(date="2024-10-25") # WS Game 1
-        if schedule and len(schedule) > 0:
-            game_pk = schedule[0]['game_id']
-            print(f"Found Game PK: {game_pk} ({schedule[0]['away_name']} @ {schedule[0]['home_name']})")
-            run_backtest(game_pk)
-        else:
-            print("Could not find a valid game for backtesting. Using fallback.")
-            run_backtest(748534) # Fallback
-    except Exception as e:
-        print(f"Error fetching schedule: {e}. Using fallback.")
-        run_backtest(748534) # Fallback
+    # Stress Test: World Series Game 5 (2024-10-30)
+    # NYY (Home) lead 5-0, collapse and lose 6-7.
+    game_pk = 775296
+    run_backtest(game_pk)
