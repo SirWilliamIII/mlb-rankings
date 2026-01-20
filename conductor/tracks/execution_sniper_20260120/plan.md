@@ -23,9 +23,9 @@
     - [x] TDD: Verify the signal-to-persistence latency is < 50ms.
 
 ## Phase 3: Calibration & Validation
-- [ ] Task: Post-Game Settlement
-    - [ ] Create `scripts/settle_shadow_bets.py` to update results from completed games.
-- [ ] Task: The Calibration Loop
-    - [ ] Implement `scripts/calibrate_sniper.py`.
-    - [ ] Calculate Brier Score and Expected vs. Observed win rates.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
+- [x] Task: Post-Game Settlement
+    - [x] Create `scripts/settle_shadow_bets.py` to update results from completed games.
+- [x] Task: The Calibration Loop
+    - [x] Implement `scripts/calibrate_sniper.py`.
+    - [x] Calculate Brier Score and Expected vs. Observed win rates.
+- [x] Task: Conductor - User Manual Verification 'Phase 3' (Protocol in workflow.md)
