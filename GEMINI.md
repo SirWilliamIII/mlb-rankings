@@ -3,17 +3,19 @@
 ## Current Status
 **Phase 3 Complete (Live Operations Ready)**. The system has evolved from a passive championship simulator into an autonomous **Live Betting Intelligence Platform**. It now features a "Sniper Mode" dashboard that polls real-time MLB data, detects inefficiencies (Fatigue/TTTO), and generates wager recommendations using the Kelly Criterion.
 
-## Key Accomplishments (Jan 15, 2026)
-- **Trader Agent Implemented**: A decision-making engine (`TraderAgent`) that calculates Edge, determines bet sizing (Quarter Kelly), and enforces safety valves (blocking bets during "Garbage Time" or Low Leverage).
-- **Shadow Trader Verification**: Successfully backtested the "Sharp" model against a "Lazy Bookmaker" (Synthetic Market) using historical data (World Series 2024), achieving **+87% ROI** on a test case.
-- **Dynamic Market Simulator**: Engineered a market simulator that adjusts "Vig" (2.5% - 5.5%) based on game volatility, creating a realistic adversary for the agent.
-- **Live Sniper Dashboard**: Deployed a real-time UI featuring:
-    - **Live Game Cards**: Visualizing base states, outs, and pitch counts.
-    - **Inefficiency Alerts**: Badges for "FATIGUE" and "TTTO".
-    - **Signal History**: A log of all generated betting signals.
-- **Infrastructure Hardening**: 
-    - Split `MonteCarloSimulator` into `SeasonSimulator` (Macro) and `GameSimulator` (Micro/Vectorized) to resolve naming collisions.
-    - Implemented `LiveGameService` to poll the official `mlb-statsapi`.
+## Key Accomplishments (Jan 20, 2026)
+- **Phase 1 (Latency) Complete**: Implemented `LatencyMonitor` with non-blocking queue architecture to track `Feed_Delta`. Added strict 3.0s - 6.0s "Sniper Window" guardrails.
+- **Phase 2 (Intelligence) Complete**: Replaced static RE24 tables with a **Vectorized O(1) Markov Engine** (`MarkovChainService`). Verified dynamic probability shifts (+4.05% win prob) under "Meltdown" pitcher conditions.
+- **Phase 3 (Execution) Complete**:
+    - **Vig Removal**: Implemented Multiplicative method in `BettingAnalyzer` to find "Fair Value".
+    - **Leverage-Scaled Staking**: Updated `TraderAgent` to boost bet sizes (up to 2x Kelly) during high-leverage moments (LI > 2.0).
+    - **Shadow Infrastructure**: Deployed `shadow_bets` table and `scripts/settle_shadow_bets.py` for closed-loop calibration.
+    - **Kill House Verified**: Ran stress test on WS Game 5 (LAD @ NYY). Identified need for defensive error modeling.
+
+## Concerns & Risks (Jan 20, 2026)
+- **Financial Precision**: Current implementation uses `FLOAT/REAL` for financial calculations. Must migrate to `DECIMAL` before handling real money to avoid rounding errors.
+- **Thread Safety**: Background workers (`LatencyMonitor`, `TraderAgent`) use daemon threads without graceful shutdown hooks. Risk of data loss (dropped logs/bets) on application restart.
+- **Defensive Modeling**: The "Kill House" test revealed the Markov Engine is blind to fielding errors, leading to losses during defensive collapses. Future "Phase 4" should incorporate fielding metrics.
 
 ## Design Plan Updates
 - **Active Trading Logic**: Shifted from pure probability display to "Actionable Signals" (BET/PASS/BLOCK).
