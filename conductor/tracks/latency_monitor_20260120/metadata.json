@@ -1,0 +1,8 @@
+{
+  "track_id": "latency_monitor_20260120",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-20T00:00:00Z",
+  "updated_at": "2026-01-20T00:00:00Z",
+  "description": "Phase 1: Latency Monitor & Tier 1 Signal Protocol implementation"
+}
