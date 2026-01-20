@@ -22,4 +22,4 @@
 - [x] Task: Markov Integration
     - [x] Update `MarkovChainService.get_instant_win_prob` signature.
     - [x] Update `LiveGameService` to pass default defense mod (1.0).
-- [ ] Task: Conductor - User Manual Verification 'Phase 3'
+- [x] Task: Conductor - User Manual Verification 'Phase 3'

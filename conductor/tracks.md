@@ -22,6 +22,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Risk Mitigation & Hardening**
+- [x] **Track: Risk Mitigation & Hardening**
   *Link: [./tracks/hardening_20260120/](./tracks/hardening_20260120/)*
 
