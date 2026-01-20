@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from app.services.mlb_api import MlbApi
 from app.services.state_engine import StateEngine
 from app.services.pitcher_monitor import PitcherMonitor
@@ -235,8 +236,9 @@ class GameReplayService:
                 "pitcher_name": pitcher_name,
                 "pitcher_modifier": pitcher_modifier,
                 "description": result.get('description', ''),
-                "is_complete": result.get('type') == 'atBat' # Only yield on completed plays? Or every pitch?
-                                                             # Current loop is 'allPlays' which are usually AB results.
+                "event_type": result.get('eventType', 'unknown'),
+                "timestamp": about.get('startTime', datetime.now(timezone.utc).isoformat()), # Capture play time
+                "is_complete": result.get('type') == 'atBat' 
             }
 
 def match_key_exists(data, key_path):

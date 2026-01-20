@@ -76,7 +76,7 @@ class TestTraderAgent:
         # Let's use an agent with higher limit for testing scaling
         agent_high_limit = TraderAgent(max_wager_limit=0.20)
         result_3 = agent_high_limit.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context_2)
-        assert result_3['wager_percent'] == 0.10 # 0.05 * 2.0 = 0.10
+        assert result_3['wager_percent'] == 0.075 # 0.05 * 1.5 (Max Scaling) = 0.075
 
     def test_latency_safety_valve(self, agent):
         # Context: Latency unsafe

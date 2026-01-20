@@ -65,9 +65,15 @@ class MarketSimulator:
                 
         return base_vig
 
-    def get_market_odds(self, home_score, away_score, inning, is_top, state_idx):
+    def get_market_odds(self, home_score, away_score, inning, is_top, state_idx, panic_factor=0.0):
         """
         Returns the 'Market' American Odds for the Home Team.
+        panic_factor > 0.0 means the Market is PANICKING against the current state.
+        If is_top (Away Batting/Home Pitching), panic usually means defaulting against Home (-prob).
+        If !is_top (Home Batting/Away Pitching), panic usually means defaulting against Away (+prob for Home).
+        
+        Actually, let's keep it simple:
+        panic_factor is the % drop in Win Prob for the HOME team due to "Sentiment".
         """
         # 1. Baseline Probability
         raw_prob = self.state_engine.get_win_probability(
@@ -84,7 +90,13 @@ class MarketSimulator:
         vig_factor = self.calculate_dynamic_vig(inning, score_diff)
         
         market_prob_home = raw_prob
-        # Inflate probability to represent cost
+        
+        # --- PANIC INJECTION ---
+        # If panic_factor is 0.15, we artificially lower Home Prob by 15% (e.g. 0.50 -> 0.425)
+        # simulating a crash in confidence.
+        market_prob_home = market_prob_home * (1.0 - panic_factor)
+        
+        # Inflate probability to represent cost (Vig)
         priced_prob_home = min(0.99, market_prob_home * vig_factor)
         
         # 3. Convert to American Odds
