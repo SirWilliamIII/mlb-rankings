@@ -2,6 +2,9 @@ from typing import Dict, Optional, Tuple
 import json
 import time
 import uuid
+import threading
+import queue
+from datetime import datetime, timezone
 
 class TraderAgent:
     """
@@ -10,21 +13,31 @@ class TraderAgent:
     1. Kelly Criterion Sizing
     2. Divergence/Edge Detection
     3. Safety Valve Checks (Garbage Time, etc.)
+    4. Non-blocking persistence of shadow bets.
     """
 
-    def __init__(self, bankroll: float = 10000.0, kelly_fraction: float = 0.25, 
+    def __init__(self, db_manager=None, bankroll: float = 10000.0, kelly_fraction: float = 0.25, 
                  min_edge: float = 0.02, max_wager_limit: float = 0.05):
         """
         Args:
+            db_manager: Database connection manager.
             bankroll: Total capital available.
             kelly_fraction: Fraction of Full Kelly to wager (e.g., 0.25 = Quarter Kelly).
             min_edge: Minimum positive EV required to trigger a bet (e.g., 0.02 = 2%).
             max_wager_limit: Hard cap on wager size as % of bankroll (e.g., 0.05 = 5%).
         """
+        self.db_manager = db_manager
         self.bankroll = bankroll
         self.kelly_fraction = kelly_fraction
         self.min_edge = min_edge
         self.max_wager_limit = max_wager_limit
+        
+        # Async Bet Logger Setup
+        self._bet_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        if self.db_manager:
+            self._worker_thread = threading.Thread(target=self._bet_logger_worker, daemon=True)
+            self._worker_thread.start()
 
     def generate_tier1_signal(self, data: Dict) -> str:
         """
@@ -100,8 +113,62 @@ class TraderAgent:
         if wager_amount <= 0:
              return self._build_response("PASS", "Kelly suggested <= 0", 0.0, implied_prob, edge)
 
-        return self._build_response("BET", f"Value detected (EV: {ev:.2%}, LI: {li:.2f})", 
+        response = self._build_response("BET", f"Value detected (EV: {ev:.2%}, LI: {li:.2f})", 
                                     wager_amount, implied_prob, edge, wager_pct)
+        
+        # Async Persistence
+        if self.db_manager:
+            payload = {
+                'game_id': game_context.get('game_id', 0) if game_context else 0,
+                'market': game_context.get('market', 'ML') if game_context else 'ML',
+                'odds': market_odds_american,
+                'stake': response['wager_amount'],
+                'predicted_prob': model_prob,
+                'fair_market_prob': implied_prob,
+                'edge': edge,
+                'leverage_index': li,
+                'latency_ms': game_context.get('latency_ms', 0.0) if game_context else 0.0,
+                'timestamp': datetime.now(timezone.utc)
+            }
+            self._bet_queue.put(payload)
+
+        return response
+
+    def _bet_logger_worker(self):
+        """Background thread to drain the bet queue."""
+        while not self._stop_event.is_set():
+            try:
+                payload = self._bet_queue.get(timeout=1.0)
+                self._persist_shadow_bet(payload)
+                self._bet_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"[TraderAgent] Bet Logger Worker Error: {e}")
+
+    def _persist_shadow_bet(self, payload):
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                INSERT INTO shadow_bets 
+                (game_id, market, odds, stake, predicted_prob, fair_market_prob, edge, leverage_index, latency_ms, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            if self.db_manager.is_postgres:
+                query = query.replace('?', '%s')
+                
+            cursor.execute(query, (
+                payload['game_id'], payload['market'], payload['odds'], payload['stake'],
+                payload['predicted_prob'], payload['fair_market_prob'], payload['edge'],
+                payload['leverage_index'], payload['latency_ms'], payload['timestamp']
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[TraderAgent] Bet Persistence Error: {e}")
 
     def _calculate_kelly_fraction(self, win_prob: float, decimal_odds: float, leverage_index: float = 1.0) -> float:
         """

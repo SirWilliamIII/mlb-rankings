@@ -18,9 +18,9 @@
 - [x] Task: Tier 2 Operator Alerts
     - [x] Implement a `NotificationService` for Slack/Discord webhooks.
     - [x] Trigger async alerts from `LiveGameService` upon signal execution.
-- [ ] Task: Logging & Performance Audit
-    - [ ] Integrate `shadow_bets` persistence into the `TraderAgent` (Non-blocking).
-    - [ ] TDD: Verify the signal-to-persistence latency is < 50ms.
+- [x] Task: Logging & Performance Audit
+    - [x] Integrate `shadow_bets` persistence into the `TraderAgent` (Non-blocking).
+    - [x] TDD: Verify the signal-to-persistence latency is < 50ms.
 
 ## Phase 3: Calibration & Validation
 - [ ] Task: Post-Game Settlement

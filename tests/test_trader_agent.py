@@ -1,5 +1,6 @@
 import pytest
 from app.services.trader_agent import TraderAgent
+from unittest.mock import MagicMock
 
 class TestTraderAgent:
     
@@ -84,3 +85,20 @@ class TestTraderAgent:
         result = agent.evaluate_trade(model_prob=0.80, market_odds_american=100, game_context=context)
         assert result['action'] == "BLOCK"
         assert "Latency High" in result['reason']
+
+    def test_bet_logging_queue(self, agent):
+        # Mock DB Manager to enable worker
+        mock_db = MagicMock()
+        agent.db_manager = mock_db
+        
+        # Trigger a BET
+        context = {'game_id': 999, 'market': 'H_ML', 'latency_ms': 45.5}
+        agent.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context)
+        
+        # Verify item in queue
+        assert not agent._bet_queue.empty()
+        payload = agent._bet_queue.get()
+        assert payload['game_id'] == 999
+        assert payload['market'] == 'H_ML'
+        assert payload['latency_ms'] == 45.5
+        assert payload['stake'] == 500.0

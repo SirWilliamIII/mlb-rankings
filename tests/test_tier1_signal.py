@@ -2,6 +2,7 @@ import pytest
 import time
 import json
 from app.services.trader_agent import TraderAgent
+from unittest.mock import MagicMock
 
 class TestTier1Signal:
     
@@ -46,3 +47,14 @@ class TestTier1Signal:
         assert data["g"] == "NYY-BOS"
         assert data["o"] == -115
         assert data["s"] == 450.00
+
+    def test_evaluate_trade_latency(self, agent):
+        # Setup: Mock DB to enable persistence logic
+        agent.db_manager = MagicMock()
+        
+        start = time.perf_counter()
+        agent.evaluate_trade(model_prob=0.60, market_odds_american=100)
+        end = time.perf_counter()
+        
+        duration_ms = (end - start) * 1000
+        assert duration_ms < 50, f"evaluate_trade too slow: {duration_ms}ms"
