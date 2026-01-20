@@ -12,7 +12,7 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 # Expose the port the app runs on
-EXPOSE 5000
+EXPOSE 5555
 
 # Define the command to run the application
 # uv run automatically uses the virtual environment created by uv sync

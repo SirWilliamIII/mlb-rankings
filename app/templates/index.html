@@ -42,6 +42,7 @@
         <a class="navbar-brand" href="#">MLB Edge Tracker</a>
         <div class="d-flex align-items-center">
             <span id="sim-info" class="sim-info me-3"></span>
+            <input type="number" id="sim-iterations" class="form-control form-control-sm me-2" value="500" style="width: 80px; background: #16213e; color: #fff; border: 1px solid #0f3460;">
             <button class="btn btn-simulate btn-sm text-white" onclick="runSimulation()">
                 Run Simulation
             </button>
@@ -470,7 +471,8 @@
                 </tr></thead><tbody>`;
 
             teams.forEach((t, idx) => {
-                const pct = t.w / (t.w + t.l);
+                let pct = t.w / (t.w + t.l);
+                if (isNaN(pct)) pct = 0.0;
                 const gb = idx === 0 ? '-' : t.gb || '-';
                 html += `<tr class="standings-row">
                     <td>${t.name}</td>
@@ -574,11 +576,14 @@
 
     async function runSimulation() {
         const btn = document.querySelector('.btn-simulate');
+        const input = document.getElementById('sim-iterations');
+        const iterations = input.value || 500;
+        
         btn.disabled = true;
         btn.innerText = 'Running...';
 
         try {
-            const response = await fetch('/simulate?iterations=500');
+            const response = await fetch(`/simulate?iterations=${iterations}`);
             if (response.ok) {
                 // Wait a moment for DB to save, then reload
                 setTimeout(async () => {

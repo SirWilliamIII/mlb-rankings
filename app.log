@@ -47,3 +47,8 @@ lt"
 2026-01-15 13:30:54,678 - INFO - 127.0.0.1 - - [15/Jan/2026 13:30:54] "GET /api/latest-simulation HTTP/1.1" 200 -
 2026-01-15 13:30:54,694 - INFO - 127.0.0.1 - - [15/Jan/2026 13:30:54] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
 2026-01-15 13:30:54,701 - INFO - 127.0.0.1 - - [15/Jan/2026 13:30:54] "GET /betting-value HTTP/1.1" 200 -
+2026-01-20 15:07:56,222 - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-01-20 15:07:56,222 - INFO - Added job "SchedulerService.run_daily_cycle" to job store "default"
+2026-01-20 15:07:56,222 - INFO - Scheduler started
+2026-01-20 15:07:56,223 - INFO - Scheduler started.
+2026-01-20 15:07:56,226 - INFO - Scheduler has been shut down

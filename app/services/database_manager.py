@@ -353,7 +353,7 @@ class DatabaseManager:
         """Returns {pythagorean_win_pct: float}"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        self._execute(cursor, "SELECT pythagorean_win_pct FROM team_stats_advanced WHERE team_id = ?", (team_key,))
+        self._execute(cursor, "SELECT pythagorean_win_pct FROM team_stats_advanced WHERE team_id = ?", (str(team_key),))
         row = cursor.fetchone()
         conn.close()
         return row['pythagorean_win_pct'] if row else None

@@ -9,6 +9,7 @@ class ForecastingModel:
     
     def __init__(self, db_manager=None):
         self.db = db_manager
+        self.stats_cache = {}
 
     def predict_winner(self, home_team, away_team):
         """
@@ -39,20 +40,25 @@ class ForecastingModel:
         Calculates the base win probability for the home team using Log5
         with either Pythagorean Win % (preferred) or actual Win %.
         """
-        h_pct = None
-        a_pct = None
+        h_id = str(home_team['id'])
+        a_id = str(away_team['id'])
         
-        # 1. Try to get Pythagorean Win % from DB
+        h_pct = self.stats_cache.get(h_id)
+        a_pct = self.stats_cache.get(a_id)
+        
+        # 1. Try to get Pythagorean Win % from DB and cache it
         if self.db:
-            h_pyth = self.db.get_advanced_team_stats(home_team['id'])
-            a_pyth = self.db.get_advanced_team_stats(away_team['id'])
-            
-            if h_pyth is not None:
-                h_pct = h_pyth
-            if a_pyth is not None:
-                a_pct = a_pyth
+            if h_pct is None:
+                h_pyth = self.db.get_advanced_team_stats(h_id)
+                h_pct = h_pyth if h_pyth is not None else home_team.get('win_percentage', 0.5)
+                self.stats_cache[h_id] = h_pct
+                
+            if a_pct is None:
+                a_pyth = self.db.get_advanced_team_stats(a_id)
+                a_pct = a_pyth if a_pyth is not None else away_team.get('win_percentage', 0.5)
+                self.stats_cache[a_id] = a_pct
 
-        # 2. Fallback to standard Win % (Standings) if DB missing or incomplete
+        # 2. Fallback to standard Win % (Standings) if DB missing
         if h_pct is None:
             h_pct = home_team.get('win_percentage', 0.5)
         if a_pct is None:

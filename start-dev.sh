@@ -7,8 +7,8 @@ if [ ! -f .env ]; then
     echo "Warning: .env file not found."
 fi
 
-# Start PostgreSQL container if not running
-if command -v docker &> /dev/null; then
+# Start PostgreSQL container if not running and DATABASE_URL is not set
+if [ -z "$DATABASE_URL" ] && command -v docker &> /dev/null; then
     if ! docker ps --format '{{.Names}}' | grep -q 'mlb-rankings-db'; then
         echo "Starting PostgreSQL container..."
         docker compose up -d db
@@ -21,7 +21,11 @@ if command -v docker &> /dev/null; then
     # Export DATABASE_URL to connect to Dockerized PostgreSQL
     export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mlb_stats"
 else
-    echo "Docker not found. Using SQLite fallback."
+    if [ -n "$DATABASE_URL" ]; then
+        echo "Using existing DATABASE_URL."
+    else
+        echo "Docker not found and DATABASE_URL not set. Using SQLite fallback."
+    fi
 fi
 
 echo ""

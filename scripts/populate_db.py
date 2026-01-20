@@ -25,26 +25,38 @@ def populate_data():
     for div in standings.values():
         for team in div['teams']:
             mlb_id = team['team_id']
-            # Lookup full details to get abbreviation
-            # Warning: making 30 calls here. It's a script, so it's fine.
-            meta = statsapi.lookup_team(mlb_id)
-            if meta:
-                # fileCode is usually 'ari', 'tor' etc.
-                abbr = meta[0].get('fileCode', '').upper()
-                if abbr:
-                    # Special cases for discrepancies if any (e.g. WAS vs WSH)
-                    # SportsData uses: WAS, CWS, CHW?, NYY, NYM, LAD, LAA, SF, SD...
-                    # Let's handle known discrepancies if we encounter them.
-                    # statsapi 'fileCode' is usually robust.
-                    id_map[abbr] = mlb_id
-                    
-                    # Also map 'teamCode' just in case
-                    code = meta[0].get('teamCode', '').upper()
-                    if code and code != abbr:
-                        id_map[code] = mlb_id
+            # Fetch official abbreviation directly from team endpoint
+            try:
+                team_data = statsapi.get('team', {'teamId': mlb_id})
+                if team_data and 'teams' in team_data:
+                    abbr = team_data['teams'][0].get('abbreviation', '').upper()
+                    if abbr:
+                        id_map[abbr] = mlb_id
+                        # Comprehensive SportsData Discrepancy Map
+                        discrepancies = {
+                            'LAN': 'LAD', 'LAD': 'LAD',
+                            'CHN': 'CHC', 'CHC': 'CHC',
+                            'CHA': 'CHW', 'CWS': 'CHW',
+                            'AZ':  'ARI', 'ARI': 'ARI',
+                            'NYA': 'NYY', 'NYY': 'NYY',
+                            'NYN': 'NYM', 'NYM': 'NYM',
+                            'SDN': 'SD',  'SD':  'SD',  'SDP': 'SD',
+                            'SFN': 'SF',  'SF':  'SF',  'SFG': 'SF',
+                            'ANA': 'LAA', 'LAA': 'LAA',
+                            'TBA': 'TB',  'TB':  'TB',  'TBR': 'TB',
+                            'KCA': 'KC',  'KC':  'KC',  'KCR': 'KC',
+                            'WAS': 'WSH', 'WSH': 'WSH',
+                            'OAK': 'ATH' # SportsData uses ATH for Athletics
+                        }
+                        # Map the discrepancy key to the MLB ID
+                        for m_abbr, s_abbr in discrepancies.items():
+                            if abbr == m_abbr:
+                                id_map[s_abbr] = mlb_id
+            except:
+                pass
                         
             total_teams += 1
-            print(f"Mapped {team['name']} ({mlb_id}) -> {abbr}", end="\r")
+            print(f"Mapped {team['name']} ({mlb_id}) -> {abbr if 'abbr' in locals() else '???'}", end="\r")
             
     print(f"\nID Map built for {len(id_map)} keys.")
 
