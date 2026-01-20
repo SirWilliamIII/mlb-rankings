@@ -4,9 +4,9 @@
 - [x] Task: Implement Multiplicative Vig Removal
     - [x] TDD: Write tests for `BettingAnalyzer.remove_vig` with varying market spreads.
     - [x] Implement the normalization logic in `app/services/betting_analyzer.py`.
-- [ ] Task: Leverage-Scaled Staking Logic
-    - [ ] Update `TraderAgent` to accept `leverage_index` in the decision context.
-    - [ ] Implement scaling formula: `wager = Base_Kelly * min(LI, 2.0)`.
+- [x] Task: Leverage-Scaled Staking Logic
+    - [x] Update `TraderAgent` to accept `leverage_index` in the decision context.
+    - [x] Implement scaling formula: `wager = Base_Kelly * min(LI, 2.0)`.
 - [ ] Task: Enforce Hard Latency Gate
     - [ ] Refactor `TraderAgent` to strictly check the `latency_safe` flag.
     - [ ] Verify that `BLOCK` is returned immediately if the window is closed.

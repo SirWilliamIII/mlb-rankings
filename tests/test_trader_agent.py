@@ -58,3 +58,21 @@ class TestTraderAgent:
         assert agent._american_to_decimal(-200) == 1.5
         # +200 -> 3.0
         assert agent._american_to_decimal(200) == 3.0
+
+    def test_leverage_scaled_staking(self, agent):
+        # Model: 60%, Odds: +100. Full Kelly = 0.2. Base Quarter Kelly = 0.05.
+        # Case 1: LI = 1.0 (Neutral). Staking should be 0.05.
+        context_1 = {'leverage_index': 1.0}
+        result_1 = agent.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context_1)
+        assert result_1['wager_percent'] == 0.05
+
+        # Case 2: LI = 2.0 (High Leverage). Staking should be 0.05 * 2.0 = 0.10.
+        # But wait, max_wager_limit is 0.05. So it should be capped.
+        context_2 = {'leverage_index': 2.0}
+        result_2 = agent.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context_2)
+        assert result_2['wager_percent'] == 0.05 # Capped at max_wager_limit
+
+        # Let's use an agent with higher limit for testing scaling
+        agent_high_limit = TraderAgent(max_wager_limit=0.20)
+        result_3 = agent_high_limit.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context_2)
+        assert result_3['wager_percent'] == 0.10 # 0.05 * 2.0 = 0.10

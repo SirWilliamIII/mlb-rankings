@@ -90,7 +90,8 @@ class TraderAgent:
             return self._build_response("PASS", reason, 0.0, implied_prob, edge)
 
         # 5. Calculate Position Size (Kelly Criterion)
-        wager_pct = self._calculate_kelly_fraction(model_prob, decimal_odds)
+        li = game_context.get('leverage_index', 1.0) if game_context else 1.0
+        wager_pct = self._calculate_kelly_fraction(model_prob, decimal_odds, li)
         
         # Apply limits
         wager_pct = min(wager_pct, self.max_wager_limit)
@@ -99,17 +100,14 @@ class TraderAgent:
         if wager_amount <= 0:
              return self._build_response("PASS", "Kelly suggested <= 0", 0.0, implied_prob, edge)
 
-        return self._build_response("BET", f"Value detected (EV: {ev:.2%})", 
+        return self._build_response("BET", f"Value detected (EV: {ev:.2%}, LI: {li:.2f})", 
                                     wager_amount, implied_prob, edge, wager_pct)
 
-    def _calculate_kelly_fraction(self, win_prob: float, decimal_odds: float) -> float:
+    def _calculate_kelly_fraction(self, win_prob: float, decimal_odds: float, leverage_index: float = 1.0) -> float:
         """
-        Calculates the optimal bet fraction using the Kelly Criterion.
-        f* = (bp - q) / b
-        where:
-            b = net odds received on the wager (decimal_odds - 1)
-            p = probability of winning
-            q = probability of losing (1 - p)
+        Calculates the optimal bet fraction using the Kelly Criterion,
+        scaled by the game's Leverage Index.
+        f* = ((bp - q) / b) * Base_Fraction * min(LI, 2.0)
         """
         b = decimal_odds - 1.0
         p = win_prob
@@ -119,7 +117,12 @@ class TraderAgent:
             return 0.0
 
         full_kelly = (b * p - q) / b
-        return max(0.0, full_kelly) * self.kelly_fraction
+        
+        # Apply Leverage Scaling: multiplier = min(LI, 2.0)
+        # Cap multiplier at 2.0 to prevent extreme sizing in ultra-high variance moments
+        li_multiplier = min(leverage_index, 2.0)
+        
+        return max(0.0, full_kelly) * self.kelly_fraction * li_multiplier
 
     def _check_safety_valves(self, context: Optional[Dict]) -> Tuple[bool, str]:
         """
