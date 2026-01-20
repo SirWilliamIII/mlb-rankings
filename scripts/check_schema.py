@@ -9,16 +9,17 @@ if db_url:
     try:
         conn = psycopg.connect(db_url)
         cursor = conn.cursor()
-        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_name='feed_latency_metrics';")
-        table = cursor.fetchone()
-        if table:
-            print("Table 'feed_latency_metrics' exists in Postgres.")
-            cursor.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'feed_latency_metrics';")
-            columns = cursor.fetchall()
-            for col in columns:
-                print(col)
-        else:
-            print("Table 'feed_latency_metrics' does not exist in Postgres.")
+        for table_name in ['feed_latency_metrics', 'shadow_bets']:
+            cursor.execute(f"SELECT table_name FROM information_schema.tables WHERE table_name='{table_name}';")
+            table = cursor.fetchone()
+            if table:
+                print(f"Table '{table_name}' exists in Postgres.")
+                cursor.execute(f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table_name}';")
+                columns = cursor.fetchall()
+                for col in columns:
+                    print(col)
+            else:
+                print(f"Table '{table_name}' does not exist in Postgres.")
         conn.close()
     except Exception as e:
         print(f"Error connecting to Postgres: {e}")
@@ -32,14 +33,15 @@ else:
     else:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='feed_latency_metrics';")
-        table = cursor.fetchone()
-        if table:
-            print("Table 'feed_latency_metrics' exists.")
-            cursor.execute("PRAGMA table_info(feed_latency_metrics);")
-            columns = cursor.fetchall()
-            for col in columns:
-                print(col)
-        else:
-            print("Table 'feed_latency_metrics' does not exist.")
+        for table_name in ['feed_latency_metrics', 'shadow_bets']:
+            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';")
+            table = cursor.fetchone()
+            if table:
+                print(f"Table '{table_name}' exists.")
+                cursor.execute(f"PRAGMA table_info({table_name});")
+                columns = cursor.fetchall()
+                for col in columns:
+                    print(col)
+            else:
+                print(f"Table '{table_name}' does not exist.")
         conn.close()

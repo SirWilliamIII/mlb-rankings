@@ -132,6 +132,25 @@ class DatabaseManager:
             )
         ''')
 
+        # NEW: Table for Shadow Bets (Phase 3)
+        self._execute(cursor, f'''
+            CREATE TABLE IF NOT EXISTS shadow_bets (
+                id {pk_type},
+                game_id INTEGER,
+                market {text_type},
+                odds INTEGER,
+                stake REAL,
+                predicted_prob REAL,
+                fair_market_prob REAL,
+                edge REAL,
+                leverage_index REAL,
+                latency_ms REAL,
+                timestamp {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                outcome {text_type}, -- WON, LOST, VOID
+                profit_loss REAL DEFAULT 0.0
+            )
+        ''')
+
         conn.commit()
         conn.close()
 

@@ -12,9 +12,9 @@
     - [x] Verify that `BLOCK` is returned immediately if the window is closed.
 
 ## Phase 2: Shadow Infrastructure & Persistence
-- [ ] Task: Shadow Bets Database
-    - [ ] Update `DatabaseManager` to create the `shadow_bets` table.
-    - [ ] Include fields for `latency_ms`, `predicted_prob`, and `fair_market_prob`.
+- [x] Task: Shadow Bets Database
+    - [x] Update `DatabaseManager` to create the `shadow_bets` table.
+    - [x] Include fields for `latency_ms`, `predicted_prob`, and `fair_market_prob`.
 - [ ] Task: Tier 2 Operator Alerts
     - [ ] Implement a `NotificationService` for Slack/Discord webhooks.
     - [ ] Trigger async alerts from `LiveGameService` upon signal execution.
