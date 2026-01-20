@@ -9,8 +9,8 @@ Implement the core `LatencyMonitor` service to quantify the time delta between l
 - **Calculation:** Compute `Delta = ReceiptTime - EventTime`.
 - **Rolling Average:** Maintain a sliding window (N=50) of deltas.
 - **Guardrails:**
-    - `is_safe_window()` returns `True` only if `AverageDelta < 6.0s`.
-    - Log all deltas to `feed_latency_metrics` table.
+    - `is_safe_window()` returns `True` only if `3.0s < AverageDelta < 6.0s` (The Sniper Window).
+    - Log all deltas to `feed_latency_metrics` table asynchronously.
 
 ### 2.2 Tier 1 Signal Generation
 - **Format:** Strict Minified JSON (No whitespace).
