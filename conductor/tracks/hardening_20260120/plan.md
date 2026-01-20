@@ -10,11 +10,11 @@
     - [x] Update tests to verify precision.
 
 ## Phase 2: Thread Safety
-- [ ] Task: Shutdown Logic
-    - [ ] Create `app/utils/shutdown_handler.py`.
-    - [ ] Implement `stop()` methods in all background services.
-- [ ] Task: Integration
-    - [ ] Register services with `ShutdownHandler` in `app.py`.
+- [x] Task: Shutdown Logic
+    - [x] Create `app/utils/shutdown_handler.py`.
+    - [x] Implement `stop()` methods in all background services.
+- [x] Task: Integration
+    - [x] Register services with `ShutdownHandler` in `app.py`.
 
 ## Phase 3: Defensive Modeling Scaffolding
 - [ ] Task: Defense Monitor

@@ -6,12 +6,19 @@ from app.services.database_manager import DatabaseManager
 from app.services.betting_analyzer import BettingAnalyzer
 from app.services.scheduler_service import SchedulerService
 from app.services.live_game_service import LiveGameService
+from app.utils.shutdown_handler import ShutdownHandler
 
 app = Flask(__name__)
 db_manager = DatabaseManager()
 mlb_api = MlbApi(db_manager)
 betting_analyzer = BettingAnalyzer(db_manager)
 live_service = LiveGameService(db_manager)
+
+# Initialize Shutdown Handler
+shutdown_handler = ShutdownHandler()
+shutdown_handler.register(live_service.latency_monitor)
+shutdown_handler.register(live_service.notifier)
+# Register other threaded services if any
 
 # Initialize and Start Scheduler
 scheduler = SchedulerService()

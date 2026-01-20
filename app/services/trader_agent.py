@@ -211,3 +211,9 @@ class TraderAgent:
             conn.close()
         except Exception as e:
             print(f"[TraderAgent] Bet Persistence Error: {e}")
+
+    def stop(self):
+        """Graceful shutdown for the worker thread."""
+        self._stop_event.set()
+        if hasattr(self, '_worker_thread') and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=2.0)
