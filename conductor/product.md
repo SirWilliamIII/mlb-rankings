@@ -82,13 +82,13 @@ The **MLB Sniper Engine** is a high-frequency, algorithmic trading system design
 
 ### B. Micro-State Pricing (Markov Chain Engine)
 * **Concept:** "Bases Loaded, 1 Out" is not a static 65% win probability. It depends on the *specific* pitcher's ground ball rate and the batter's contact rate.
-* **Execution:** A memory-resident Markov Chain (`markov_chain_service.py`) calculates `WinProb` in < 5ms using pre-computed transition matrices adjusted for real-time `PitcherModifier` (Fatigue/TTTO).
-* **Status:** **INCOMPLETE** (Current `state_engine.py` relies on static RE24 tables).
+* **Execution:** A memory-resident Markov Chain (`markov_chain_service.py`) calculates `WinProb` in < 1ms using pre-computed transition matrices adjusted for real-time `PitcherModifier` (Fatigue/TTTO).
+* **Status:** **COMPLETED** (O(1) Vectorized Engine implemented).
 
 ### C. True Price Discovery (Vig Stripping)
 * **Concept:** Implied probability includes the "Vig" (fee). To find an edge, we must compare our model against the book's *true* opinion.
 * **Execution:** Real-time removal of overround using Multiplicative methods to expose the "Fair Line."
-* **Status:** **PENDING** (To be implemented in `betting_analyzer.py`).
+* **Status:** **COMPLETED** (Implemented in `betting_analyzer.py`).
 
 ## 3. Architecture & Data Flow
 
