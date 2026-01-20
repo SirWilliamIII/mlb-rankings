@@ -1,109 +1,118 @@
 import threading
 import queue
-from datetime import datetime
+from datetime import datetime, timezone
 import dateutil.parser
 
 class LatencyMonitor:
     """
-    Phase 1: Latency & Feed Synchronization.
-    Tracks the delay between real-world events (API timestamp) and system receipt.
+    Level 300 Non-Blocking Latency Monitor.
+    Ensures that database I/O never dictates execution speed.
     """
     
-    SAFE_THRESHOLD_SECONDS = 6.0
+    SAFE_THRESHOLD = 6.0
+    MIN_ADVANTAGE_THRESHOLD = 3.0 # We need at least 3s of lag to exploit
     
     def __init__(self, db_manager):
         self.db_manager = db_manager
-        self.rolling_deltas = [] # Keep last 50 for average
+        self.window_history = []  # In-memory rolling window for O(1) access
         self.max_history = 50
         
-        # Async Logging Setup
-        self.log_queue = queue.Queue()
-        self.worker_thread = threading.Thread(target=self._log_worker, daemon=True)
-        self.worker_thread.start()
+        # Non-Blocking Architecture
+        self._log_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._worker_thread = threading.Thread(target=self._db_worker, daemon=True)
+        self._worker_thread.start()
 
     def log_feed_delta(self, game_id, event_ts_str):
         """
-        Calculates and logs the latency delta.
-        
-        Args:
-            game_id (int): The game PK.
-            event_ts_str (str): ISO string from MLB API (e.g., '2023-10-25T19:00:05Z').
-        
-        Returns:
-            float: The calculated delta in seconds.
+        HOT PATH: Executes in microseconds. 
+        Calculates delta, updates state, and offloads I/O.
         """
         if not event_ts_str:
             return 0.0
             
         try:
-            # Parse API timestamp (usually UTC)
+            # 1. Parse & Normalize (UTC)
             event_time = dateutil.parser.parse(event_ts_str)
-            
-            # Ensure both times are timezone-aware and in UTC for correct comparison
             if event_time.tzinfo is None:
-                # If API provides naive timestamp, assume it's UTC
-                event_time = event_time.replace(tzinfo=datetime.timezone.utc)
+                event_time = event_time.replace(tzinfo=timezone.utc)
             else:
-                # Convert to UTC if it has a different timezone
-                event_time = event_time.astimezone(datetime.timezone.utc)
+                event_time = event_time.astimezone(timezone.utc)
 
-            # Receipt time (Now in UTC)
-            receipt_time = datetime.now(datetime.timezone.utc)
+            receipt_time = datetime.now(timezone.utc)
             
+            # 2. Math (Fast)
             delta = (receipt_time - event_time).total_seconds()
-            
-            # Sanity check for negative delta (clock skew or bad parse) -> clamp to 0
-            if delta < 0:
-                delta = 0.0
+            if delta < 0: delta = 0.0
                 
-            # Update rolling average
-            self.rolling_deltas.append(delta)
-            if len(self.rolling_deltas) > self.max_history:
-                self.rolling_deltas.pop(0)
+            # 3. Update State (Fast)
+            self._update_rolling_window(delta)
             
-            is_safe = 1 if delta <= self.SAFE_THRESHOLD_SECONDS else 0
-            
-            # Async log to DB via Queue
-            self.log_queue.put((game_id, event_ts_str, receipt_time, delta, is_safe))
+            # 4. Offload I/O (Instant)
+            # Drop the payload and return immediately.
+            payload = {
+                'game_id': game_id,
+                'event_ts': event_ts_str,
+                'receipt_ts': receipt_time,
+                'delta': delta,
+                'is_safe': self.is_safe_window()
+            }
+            self._log_queue.put(payload)
             
             return delta
             
         except Exception as e:
-            print(f"[LatencyMonitor] Error calculating delta: {e}")
+            # Sniper safety: log error but do not block the thread
+            print(f"[LatencyMonitor] Critical path error: {e}")
             return 0.0
-
-    def _log_worker(self):
-        """Background thread to drain the log queue."""
-        while True:
-            try:
-                item = self.log_queue.get()
-                if item is None: break # Sentinel to stop
-                
-                game_id, event_ts, receipt_ts, delta, is_safe = item
-                self._persist_metric(game_id, event_ts, receipt_ts, delta, is_safe)
-                
-                self.log_queue.task_done()
-            except Exception as e:
-                print(f"[LatencyMonitor] Worker Error: {e}")
 
     def is_safe_window(self):
         """
-        Returns True if the average latency is within the safe threshold.
+        Determines if we are within the exploitable latency window.
+        Read-only from memory.
         """
-        if not self.rolling_deltas:
-            return True # Assume safe if no data
+        if not self.window_history:
+            return False
             
-        avg_latency = sum(self.rolling_deltas) / len(self.rolling_deltas)
-        return avg_latency <= self.SAFE_THRESHOLD_SECONDS
+        avg_latency = sum(self.window_history) / len(self.window_history)
+        # Must be within 3.0s and 6.0s for a valid "Sniper" opportunity
+        return self.MIN_ADVANTAGE_THRESHOLD < avg_latency < self.SAFE_THRESHOLD
+
+    def _update_rolling_window(self, delta):
+        self.window_history.append(delta)
+        if len(self.window_history) > self.max_history:
+            self.window_history.pop(0)
+
+    def _db_worker(self):
+        """
+        COLD PATH: Drains the queue to the database in a background thread.
+        Handles slow network RTT without blocking the sniper engine.
+        """
+        while not self._stop_event.is_set():
+            try:
+                payload = self._log_queue.get(timeout=1.0)
+                
+                self._persist_metric(
+                    payload['game_id'], 
+                    payload['event_ts'], 
+                    payload['receipt_ts'], 
+                    payload['delta'], 
+                    payload['is_safe']
+                )
+                self._log_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"[LatencyMonitor] DB Background Write Failed: {e}")
 
     def get_current_stats(self):
-        if not self.rolling_deltas:
+        if not self.window_history:
             return {"avg": 0.0, "status": "UNKNOWN"}
             
-        avg = sum(self.rolling_deltas) / len(self.rolling_deltas)
+        avg = sum(self.window_history) / len(self.window_history)
         return {
             "avg": round(avg, 3),
-            "status": "SAFE" if avg <= self.SAFE_THRESHOLD_SECONDS else "LAGGING"
+            "status": "SAFE" if self.MIN_ADVANTAGE_THRESHOLD < avg < self.SAFE_THRESHOLD else "OUTSIDE_WINDOW"
         }
 
     def _persist_metric(self, game_id, event_ts, receipt_ts, delta, is_safe):
@@ -116,16 +125,17 @@ class LatencyMonitor:
                 (game_id, event_timestamp, receipt_timestamp, delta_seconds, is_safe_window)
                 VALUES (?, ?, ?, ?, ?)
             """
-            # Handle Postgres syntax if needed (Manager usually handles it but we are bypassing manager's _execute helper here slightly for speed/custom query)
-            # Actually, let's use the manager's helper pattern if possible, but manager doesn't expose a generic 'insert' easily without raw SQL.
-            # We'll rely on the DB manager's _execute if we had access, but here we have the conn.
-            # Let's just use standard SQL and rely on the driver.
             
             if self.db_manager.is_postgres:
                 query = query.replace('?', '%s')
                 
-            cursor.execute(query, (game_id, event_ts, receipt_ts, delta, is_safe))
+            cursor.execute(query, (game_id, event_ts, receipt_ts, delta, 1 if is_safe else 0))
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"[LatencyMonitor] DB Write Error: {e}")
+            print(f"[LatencyMonitor] Database Persistence Error: {e}")
+
+    def stop(self):
+        """Graceful shutdown for the worker thread."""
+        self._stop_event.set()
+        self._worker_thread.join(timeout=2.0)

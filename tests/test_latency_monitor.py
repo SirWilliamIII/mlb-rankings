@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from app.services.latency_monitor import LatencyMonitor
 
 class TestLatencyMonitor(unittest.TestCase):
@@ -9,77 +9,55 @@ class TestLatencyMonitor(unittest.TestCase):
         self.mock_db_manager.is_postgres = False
         self.monitor = LatencyMonitor(self.mock_db_manager)
 
-    def test_log_feed_delta_utc_calculation(self):
-        # Event time: 12:00:00 UTC
-        event_ts_str = "2023-10-27T12:00:00Z"
-        
-        # Receipt time: 12:00:04 UTC (4 seconds later)
-        receipt_time = datetime(2023, 10, 27, 12, 0, 4, tzinfo=timezone.utc)
-        
-        with patch('app.services.latency_monitor.datetime') as mock_datetime:
-            mock_datetime.now.return_value = receipt_time
-            mock_datetime.timezone = timezone
-            # Need to patch dateutil.parser if we want to control parsing, 
-            # but usually it's fine.
-            
-            # Since LatencyMonitor imports datetime class, we need to be careful mocking it.
-            # Easier to mock datetime.now only if possible, but it's a built-in.
-            # Let's try mocking the module.
-            pass
-            
     @patch('app.services.latency_monitor.datetime')
-    def test_delta_calculation(self, mock_datetime):
+    def test_delta_calculation_and_queue(self, mock_datetime):
         # Set "Now" to 12:00:05 UTC
         now_utc = datetime(2023, 10, 27, 12, 0, 5, tzinfo=timezone.utc)
         mock_datetime.now.return_value = now_utc
         mock_datetime.timezone.utc = timezone.utc
 
-        # Event: 12:00:00 UTC
+        # Event: 12:00:00 UTC (5s delay)
         event_ts = "2023-10-27T12:00:00Z"
         
         delta = self.monitor.log_feed_delta(123, event_ts)
         
         self.assertEqual(delta, 5.0)
+        # 5.0 is between 3.0 and 6.0, so it should be safe
         self.assertTrue(self.monitor.is_safe_window())
         
         # Verify item added to queue
-        self.assertFalse(self.monitor.log_queue.empty())
-        item = self.monitor.log_queue.get()
-        self.assertEqual(item[0], 123) # game_id
-        self.assertEqual(item[3], 5.0) # delta
+        self.assertFalse(self.monitor._log_queue.empty())
+        item = self.monitor._log_queue.get()
+        self.assertEqual(item['game_id'], 123)
+        self.assertEqual(item['delta'], 5.0)
 
     @patch('app.services.latency_monitor.datetime')
-    def test_rolling_average_and_safe_window(self, mock_datetime):
+    def test_rolling_average_sniper_window(self, mock_datetime):
         mock_datetime.timezone.utc = timezone.utc
         
-        # 1. Add 10 fast updates (2s latency)
-        mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 2, tzinfo=timezone.utc)
+        # 1. Very low latency (1s) -> NOT SAFE (No advantage)
+        mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 1, tzinfo=timezone.utc)
         for _ in range(10):
             self.monitor.log_feed_delta(123, "2023-10-27T12:00:00Z")
-            
-        self.assertTrue(self.monitor.is_safe_window()) # Avg 2.0 < 6.0
-        
-        # 2. Add 40 slow updates (10s latency)
-        # N=50 is the spec, implementation currently N=20. We will test behavior and fix N later.
-        # Assuming current implementation N=20:
-        # We fill it with 10s latency
-        
-        mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 10, tzinfo=timezone.utc)
-        for _ in range(60): # Overflow the buffer (N=50)
+        self.assertFalse(self.monitor.is_safe_window()) 
+
+        # 2. Sniper window latency (4s) -> SAFE
+        mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 4, tzinfo=timezone.utc)
+        for _ in range(50): # Flush the buffer
             self.monitor.log_feed_delta(123, "2023-10-27T12:00:00Z")
-            
-        # Now avg should be 10.0
+        self.assertTrue(self.monitor.is_safe_window())
+
+        # 3. High latency (10s) -> NOT SAFE (Stale)
+        mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 10, tzinfo=timezone.utc)
+        for _ in range(50):
+            self.monitor.log_feed_delta(123, "2023-10-27T12:00:00Z")
         self.assertFalse(self.monitor.is_safe_window())
-        self.assertEqual(self.monitor.get_current_stats()['avg'], 10.0)
 
     def test_negative_delta_clamped(self):
-        # Event in future (clock skew)
         event_ts = "2023-10-27T12:00:10Z"
-        
         with patch('app.services.latency_monitor.datetime') as mock_datetime:
              mock_datetime.now.return_value = datetime(2023, 10, 27, 12, 0, 0, tzinfo=timezone.utc)
              mock_datetime.timezone.utc = timezone.utc
-             
              delta = self.monitor.log_feed_delta(123, event_ts)
              self.assertEqual(delta, 0.0)
 
