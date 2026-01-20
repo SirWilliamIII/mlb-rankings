@@ -10,11 +10,6 @@ from decimal import Decimal, ROUND_HALF_UP
 class TraderAgent:
     """
     Automated Trading Agent for MLB Live Betting.
-    Responsible for executing the 'Active Trading' logic:
-    1. Kelly Criterion Sizing
-    2. Divergence/Edge Detection
-    3. Safety Valve Checks (Garbage Time, etc.)
-    4. Non-blocking persistence of shadow bets.
     """
 
     def __init__(self, db_manager=None, bankroll: float = 10000.0, kelly_fraction: float = 0.25, 
@@ -83,10 +78,18 @@ class TraderAgent:
             return self._build_response("PASS", reason, Decimal("0.0"), d_implied_prob, d_edge)
 
         # 5. Calculate Position Size (Kelly Criterion)
+        d_raw_kelly = self._calculate_raw_kelly(d_model_prob, d_decimal_odds)
+        
+        # --- CRITICAL FIX: Leverage Scaling ---
+        # Scale bet size based on Game Leverage Index (High LI = Bigger Bet)
         li = game_context.get('leverage_index', 1.0) if game_context else 1.0
         d_li = Decimal(str(li))
+        # Scale from 0.5x (Low Leverage) to 1.5x (High Leverage)
+        # Formula: min(max(0.5, li * 0.5 + 0.5), 1.5)
+        d_leverage_multiplier = min(max(Decimal("0.5"), d_li * Decimal("0.5") + Decimal("0.5")), Decimal("1.5"))
         
-        d_wager_pct = self._calculate_kelly_fraction(d_model_prob, d_decimal_odds, d_li)
+        d_wager_pct = d_raw_kelly * d_leverage_multiplier
+        # --------------------------------------
         
         # Apply limits
         d_wager_pct = min(d_wager_pct, self.max_wager_limit)
@@ -116,12 +119,8 @@ class TraderAgent:
 
         return response
 
-    def _calculate_kelly_fraction(self, win_prob: Decimal, decimal_odds: Decimal, leverage_index: Decimal = Decimal("1.0")) -> Decimal:
-        """
-        Calculates the optimal bet fraction using the Kelly Criterion,
-        scaled by the game's Leverage Index.
-        Formula: min(max(0.5, li * 0.5 + 0.5), 1.5)
-        """
+    def _calculate_raw_kelly(self, win_prob: Decimal, decimal_odds: Decimal) -> Decimal:
+        """Calculates the standard Kelly fraction before leverage scaling."""
         b = decimal_odds - Decimal("1.0")
         p = win_prob
         q = Decimal("1.0") - p
@@ -130,16 +129,7 @@ class TraderAgent:
             return Decimal("0.0")
 
         full_kelly = (b * p - q) / b
-        
-        # Apply Leverage Scaling
-        # li * 0.5 + 0.5
-        scaled_li = (leverage_index * Decimal("0.5")) + Decimal("0.5")
-        # max(0.5, ...)
-        floored_li = max(Decimal("0.5"), scaled_li)
-        # min(..., 1.5)
-        li_multiplier = min(floored_li, Decimal("1.5"))
-        
-        return max(Decimal("0.0"), full_kelly) * self.kelly_fraction * li_multiplier
+        return max(Decimal("0.0"), full_kelly) * self.kelly_fraction
 
     def _american_to_decimal(self, odds: int) -> Decimal:
         if odds > 0:
