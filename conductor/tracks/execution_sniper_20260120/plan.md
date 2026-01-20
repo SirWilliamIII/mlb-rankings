@@ -15,9 +15,9 @@
 - [x] Task: Shadow Bets Database
     - [x] Update `DatabaseManager` to create the `shadow_bets` table.
     - [x] Include fields for `latency_ms`, `predicted_prob`, and `fair_market_prob`.
-- [ ] Task: Tier 2 Operator Alerts
-    - [ ] Implement a `NotificationService` for Slack/Discord webhooks.
-    - [ ] Trigger async alerts from `LiveGameService` upon signal execution.
+- [x] Task: Tier 2 Operator Alerts
+    - [x] Implement a `NotificationService` for Slack/Discord webhooks.
+    - [x] Trigger async alerts from `LiveGameService` upon signal execution.
 - [ ] Task: Logging & Performance Audit
     - [ ] Integrate `shadow_bets` persistence into the `TraderAgent` (Non-blocking).
     - [ ] TDD: Verify the signal-to-persistence latency is < 50ms.

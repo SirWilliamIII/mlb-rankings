@@ -6,6 +6,7 @@ from app.services.trader_agent import TraderAgent
 from app.services.market_simulator import MarketSimulator
 from app.services.latency_monitor import LatencyMonitor
 from app.services.markov_chain_service import MarkovChainService
+from app.services.notification_service import NotificationService
 import datetime
 
 class LiveGameService:
@@ -22,6 +23,7 @@ class LiveGameService:
         self.trader_agent = TraderAgent()
         self.market_sim = MarketSimulator() # Placeholder for real odds API
         self.latency_monitor = LatencyMonitor(db_manager)
+        self.notifier = NotificationService()
         
         # Cache for PitcherMonitors (keyed by game_pk)
         self.monitors = {}
@@ -247,6 +249,13 @@ class LiveGameService:
                     "odds": market_odds,
                     "reason": decision['reason']
                 })
+                
+                # Trigger Tier 2 Operator Alert
+                self.notifier.send_alert(
+                    title="SNIPER SIGNAL: BET",
+                    message=f"Game: {away_name} @ {home_name}\nInning: {'Top' if is_top else 'Bot'} {current_inning}\nWager: ${decision['wager_amount']} @ {market_odds}\nReason: {decision['reason']}",
+                    level="SUCCESS"
+                )
         # -----------------------
         
         return {
