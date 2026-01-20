@@ -44,12 +44,6 @@ class TraderAgent:
         """
         Generates a Tier 1 Execution Signal (Minified JSON).
         Latency Budget: < 50ms.
-        
-        Args:
-            data (Dict): Contains 'game_id', 'market', 'odds', 'prob', 'stake'.
-            
-        Returns:
-            str: Minified JSON string.
         """
         signal = {
             "t": str(time.time()),
@@ -124,7 +118,9 @@ class TraderAgent:
 
     def _calculate_kelly_fraction(self, win_prob: Decimal, decimal_odds: Decimal, leverage_index: Decimal = Decimal("1.0")) -> Decimal:
         """
-        Calculates the optimal bet fraction using the Kelly Criterion.
+        Calculates the optimal bet fraction using the Kelly Criterion,
+        scaled by the game's Leverage Index.
+        Formula: min(max(0.5, li * 0.5 + 0.5), 1.5)
         """
         b = decimal_odds - Decimal("1.0")
         p = win_prob
@@ -136,7 +132,12 @@ class TraderAgent:
         full_kelly = (b * p - q) / b
         
         # Apply Leverage Scaling
-        li_multiplier = min(leverage_index, Decimal("2.0"))
+        # li * 0.5 + 0.5
+        scaled_li = (leverage_index * Decimal("0.5")) + Decimal("0.5")
+        # max(0.5, ...)
+        floored_li = max(Decimal("0.5"), scaled_li)
+        # min(..., 1.5)
+        li_multiplier = min(floored_li, Decimal("1.5"))
         
         return max(Decimal("0.0"), full_kelly) * self.kelly_fraction * li_multiplier
 
@@ -157,7 +158,7 @@ class TraderAgent:
             return False, f"Garbage Time (Inning {inning}, Diff {score_diff})"
             
         li = context.get('leverage_index')
-        if li is not None and float(li) < 0.2: # Cast to float for comparison if needed or assume safe
+        if li is not None and float(li) < 0.2: 
              return False, f"Low Leverage ({li})"
 
         if context.get('latency_safe') is False:
