@@ -120,6 +120,18 @@ class DatabaseManager:
             )
         ''')
 
+        # NEW: Table for Latency Metrics (Phase 1)
+        self._execute(cursor, f'''
+            CREATE TABLE IF NOT EXISTS feed_latency_metrics (
+                id {pk_type},
+                game_id INTEGER,
+                event_timestamp {text_type},
+                receipt_timestamp {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                delta_seconds REAL,
+                is_safe_window INTEGER -- Boolean 0/1
+            )
+        ''')
+
         conn.commit()
         conn.close()
 

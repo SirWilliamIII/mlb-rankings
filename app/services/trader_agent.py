@@ -116,6 +116,10 @@ class TraderAgent:
         if li is not None and li < 0.2:
              return False, f"Low Leverage ({li})"
 
+        # NEW: Latency Safety Check (Phase 1)
+        if context.get('latency_safe') is False:
+            return False, "Latency High (System lagging behind feed)"
+
         return True, "Safe"
 
     def _american_to_decimal(self, odds: int) -> float:

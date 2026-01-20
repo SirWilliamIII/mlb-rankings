@@ -4,6 +4,8 @@ from app.services.bullpen_history_service import BullpenHistoryService
 from app.services.pitcher_monitor import PitcherMonitor
 from app.services.trader_agent import TraderAgent
 from app.services.market_simulator import MarketSimulator
+from app.services.latency_monitor import LatencyMonitor
+from app.services.markov_chain_service import MarkovChainService
 import datetime
 
 class LiveGameService:
@@ -15,9 +17,11 @@ class LiveGameService:
     def __init__(self, db_manager=None):
         self.mlb_api = MlbApi(db_manager)
         self.state_engine = StateEngine()
+        self.markov_service = MarkovChainService()
         self.bullpen_service = BullpenHistoryService()
         self.trader_agent = TraderAgent()
         self.market_sim = MarketSimulator() # Placeholder for real odds API
+        self.latency_monitor = LatencyMonitor(db_manager)
         
         # Cache for PitcherMonitors (keyed by game_pk)
         self.monitors = {}
@@ -143,6 +147,15 @@ class LiveGameService:
         live_feed = live_data.get('liveData', {})
         linescore = live_feed.get('linescore', {})
         
+        # --- PHASE 1: LATENCY CHECK ---
+        # Extract Timestamp (statsapi usually puts it in metaData)
+        meta_data = live_data.get('metaData', {})
+        event_ts = meta_data.get('timeStamp') # e.g. "2023-10-25T21:03:01.123Z"
+        
+        self.latency_monitor.log_feed_delta(game_pk, event_ts)
+        is_latency_safe = self.latency_monitor.is_safe_window()
+        # ------------------------------
+        
         # 2. Extract Key State
         home_id = game_data.get('teams', {}).get('home', {}).get('id')
         away_id = game_data.get('teams', {}).get('away', {}).get('id')
@@ -187,23 +200,19 @@ class LiveGameService:
             active_monitor = monitors['away'] # Away pitching
             
         # Update Monitor (Simplified for poll-based: just update ID)
-        # Note: In a real polling loop, accurate pitch counting requires delta tracking.
-        # For now, we assume the API gives us current pitch count.
-        current_pitch_count = defense.get('pitcher', {}).get('number_of_pitches', 0) # Fake key, need to check API schema
-        # Actually statsapi 'defense' pitcher object might not have pitch count directly in linescore.
-        # It's usually in boxscore. Let's rely on what we have or mock "Active" update.
-        active_monitor.update_pitcher(pitcher_id, is_starter=True) # Assume starter for safety if unknown
-        # We manually set pitch count if available, or just rely on the monitor's internal logic if we were streaming events.
-        # For "Snapshot" polling, we need to inject the pitch count.
-        # Let's check 'allPlays' last play for pitch count?
-        # Or boxscore.
+        active_monitor.update_pitcher(pitcher_id, is_starter=True) 
         
         # 4. Calculate Probabilities
         pitcher_modifier = active_monitor.get_performance_modifier()
         
-        sharp_prob = self.state_engine.get_win_probability(
-            home_score, away_score, current_inning, 0 if is_top else 1,
-            state_idx, pitcher_modifier
+        # Phase 2: Use Markov Service for Instant Lookup
+        sharp_prob = self.markov_service.get_instant_win_prob(
+            inning=current_inning,
+            outs=outs,
+            runners=[r1, r2, r3],
+            score_diff=home_score - away_score,
+            is_top_inning=is_top,
+            pitcher_mod=pitcher_modifier
         )
         
         # 5. Market Odds (Simulated for Phase 3 until API upgrade)
@@ -215,7 +224,8 @@ class LiveGameService:
         context = {
             'inning': current_inning,
             'score_diff': abs(home_score - away_score),
-            'leverage_index': 1.0 # Placeholder
+            'leverage_index': 1.0, # Placeholder
+            'latency_safe': is_latency_safe # Pass latency flag
         }
         
         decision = self.trader_agent.evaluate_trade(sharp_prob, market_odds, context)
