@@ -1,4 +1,7 @@
 from typing import Dict, Optional, Tuple
+import json
+import time
+import uuid
 
 class TraderAgent:
     """
@@ -22,6 +25,29 @@ class TraderAgent:
         self.kelly_fraction = kelly_fraction
         self.min_edge = min_edge
         self.max_wager_limit = max_wager_limit
+
+    def generate_tier1_signal(self, data: Dict) -> str:
+        """
+        Generates a Tier 1 Execution Signal (Minified JSON).
+        Latency Budget: < 50ms.
+        
+        Args:
+            data (Dict): Contains 'game_id', 'market', 'odds', 'prob', 'stake'.
+            
+        Returns:
+            str: Minified JSON string.
+        """
+        signal = {
+            "t": str(time.time()),
+            "g": data.get("game_id"),
+            "m": data.get("market"),
+            "o": data.get("odds"),
+            "p": data.get("prob"),
+            "s": data.get("stake"),
+            "id": str(uuid.uuid4())
+        }
+        # dumps with separators=(',', ':') removes whitespace
+        return json.dumps(signal, separators=(',', ':'))
 
     def evaluate_trade(self, model_prob: float, market_odds_american: int, 
                        game_context: Optional[Dict] = None) -> Dict:

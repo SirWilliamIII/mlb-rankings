@@ -1,3 +1,5 @@
+import threading
+import queue
 from datetime import datetime
 import dateutil.parser
 
@@ -11,8 +13,13 @@ class LatencyMonitor:
     
     def __init__(self, db_manager):
         self.db_manager = db_manager
-        self.rolling_deltas = [] # Keep last 20 for average
-        self.max_history = 20
+        self.rolling_deltas = [] # Keep last 50 for average
+        self.max_history = 50
+        
+        # Async Logging Setup
+        self.log_queue = queue.Queue()
+        self.worker_thread = threading.Thread(target=self._log_worker, daemon=True)
+        self.worker_thread.start()
 
     def log_feed_delta(self, game_id, event_ts_str):
         """
@@ -56,14 +63,28 @@ class LatencyMonitor:
             
             is_safe = 1 if delta <= self.SAFE_THRESHOLD_SECONDS else 0
             
-            # Async log to DB (in production use background task, here direct)
-            self._persist_metric(game_id, event_ts_str, receipt_time, delta, is_safe)
+            # Async log to DB via Queue
+            self.log_queue.put((game_id, event_ts_str, receipt_time, delta, is_safe))
             
             return delta
             
         except Exception as e:
             print(f"[LatencyMonitor] Error calculating delta: {e}")
             return 0.0
+
+    def _log_worker(self):
+        """Background thread to drain the log queue."""
+        while True:
+            try:
+                item = self.log_queue.get()
+                if item is None: break # Sentinel to stop
+                
+                game_id, event_ts, receipt_ts, delta, is_safe = item
+                self._persist_metric(game_id, event_ts, receipt_ts, delta, is_safe)
+                
+                self.log_queue.task_done()
+            except Exception as e:
+                print(f"[LatencyMonitor] Worker Error: {e}")
 
     def is_safe_window(self):
         """
