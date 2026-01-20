@@ -97,7 +97,7 @@ class MarkovChainService:
             else:
                 self.runs_bb[idx] = 0
 
-    def get_instant_win_prob(self, inning, outs, runners, score_diff, is_top_inning, pitcher_mod=1.0):
+    def get_instant_win_prob(self, inning, outs, runners, score_diff, is_top_inning, pitcher_mod=1.0, defense_mod=1.0):
         """
         Returns the Win Probability for the Home Team.
         """
@@ -111,7 +111,7 @@ class MarkovChainService:
         ttto = 1 
         
         # 2. Get Matrix
-        matrix = self._get_transition_matrix(pitcher_mod, ttto)
+        matrix = self._get_transition_matrix(pitcher_mod, ttto, defense_mod)
         
         # 3. Calculate RE24 Vector (Expected Runs) from Matrix
         re24_vector = self._calculate_re24_vector(matrix)
@@ -151,7 +151,7 @@ class MarkovChainService:
         
         return min(0.999, max(0.001, win_prob))
 
-    def _get_transition_matrix(self, pitcher_mod=1.0, ttto=0):
+    def _get_transition_matrix(self, pitcher_mod=1.0, ttto=0, defense_mod=1.0):
         """
         Generates a 25x25 transition matrix adjusted for pitcher fatigue.
         Optimized: Uses pre-computed masks for vector addition.
@@ -178,6 +178,11 @@ class MarkovChainService:
         p_2b *= power_scaler
         p_3b *= power_scaler
         p_hr *= power_scaler
+        
+        # Defense Adjustment (Phase 3 Hardening)
+        if defense_mod > 1.0:
+            p_1b *= defense_mod
+            p_bb *= defense_mod # Errors extend innings like walks
         
         # Vectorized Combination
         matrix = (

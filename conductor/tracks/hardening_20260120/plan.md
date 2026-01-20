@@ -17,9 +17,9 @@
     - [x] Register services with `ShutdownHandler` in `app.py`.
 
 ## Phase 3: Defensive Modeling Scaffolding
-- [ ] Task: Defense Monitor
-    - [ ] Create `app/services/defense_monitor.py` (stub).
-- [ ] Task: Markov Integration
-    - [ ] Update `MarkovChainService.get_instant_win_prob` signature.
-    - [ ] Update `LiveGameService` to pass default defense mod (1.0).
+- [x] Task: Defense Monitor
+    - [x] Create `app/services/defense_monitor.py` (stub).
+- [x] Task: Markov Integration
+    - [x] Update `MarkovChainService.get_instant_win_prob` signature.
+    - [x] Update `LiveGameService` to pass default defense mod (1.0).
 - [ ] Task: Conductor - User Manual Verification 'Phase 3'

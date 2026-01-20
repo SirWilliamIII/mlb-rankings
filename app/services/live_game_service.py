@@ -214,7 +214,8 @@ class LiveGameService:
             runners=[r1, r2, r3],
             score_diff=home_score - away_score,
             is_top_inning=is_top,
-            pitcher_mod=pitcher_modifier
+            pitcher_mod=pitcher_modifier,
+            defense_mod=1.0 # Placeholder for Phase 3 Hardening
         )
         
         # 5. Market Odds (Simulated for Phase 3 until API upgrade)
