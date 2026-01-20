@@ -7,9 +7,9 @@
 - [x] Task: Leverage-Scaled Staking Logic
     - [x] Update `TraderAgent` to accept `leverage_index` in the decision context.
     - [x] Implement scaling formula: `wager = Base_Kelly * min(LI, 2.0)`.
-- [ ] Task: Enforce Hard Latency Gate
-    - [ ] Refactor `TraderAgent` to strictly check the `latency_safe` flag.
-    - [ ] Verify that `BLOCK` is returned immediately if the window is closed.
+- [x] Task: Enforce Hard Latency Gate
+    - [x] Refactor `TraderAgent` to strictly check the `latency_safe` flag.
+    - [x] Verify that `BLOCK` is returned immediately if the window is closed.
 
 ## Phase 2: Shadow Infrastructure & Persistence
 - [ ] Task: Shadow Bets Database

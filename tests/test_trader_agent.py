@@ -76,3 +76,11 @@ class TestTraderAgent:
         agent_high_limit = TraderAgent(max_wager_limit=0.20)
         result_3 = agent_high_limit.evaluate_trade(model_prob=0.60, market_odds_american=100, game_context=context_2)
         assert result_3['wager_percent'] == 0.10 # 0.05 * 2.0 = 0.10
+
+    def test_latency_safety_valve(self, agent):
+        # Context: Latency unsafe
+        context = {'latency_safe': False}
+        # Even with massive edge
+        result = agent.evaluate_trade(model_prob=0.80, market_odds_american=100, game_context=context)
+        assert result['action'] == "BLOCK"
+        assert "Latency High" in result['reason']
