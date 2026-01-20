@@ -1,13 +1,13 @@
 # Implementation Plan: Risk Mitigation & Hardening
 
 ## Phase 1: Financial Hardening
-- [ ] Task: Database Schema Update
-    - [ ] Update `DatabaseManager` to use `NUMERIC` for `shadow_bets`.
-    - [ ] Migrate/Recreate `shadow_bets` table.
-- [ ] Task: Decimal Migration
-    - [ ] Refactor `TraderAgent` to use `decimal.Decimal`.
-    - [ ] Refactor `BettingAnalyzer` to use `decimal.Decimal`.
-    - [ ] Update tests to verify precision.
+- [x] Task: Database Schema Update
+    - [x] Update `DatabaseManager` to use `NUMERIC` for `shadow_bets`.
+    - [x] Migrate/Recreate `shadow_bets` table.
+- [x] Task: Decimal Migration
+    - [x] Refactor `TraderAgent` to use `decimal.Decimal`.
+    - [x] Refactor `BettingAnalyzer` to use `decimal.Decimal`.
+    - [x] Update tests to verify precision.
 
 ## Phase 2: Thread Safety
 - [ ] Task: Shutdown Logic

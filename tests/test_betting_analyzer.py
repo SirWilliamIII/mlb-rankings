@@ -1,6 +1,7 @@
 import unittest
 from app.services.betting_analyzer import BettingAnalyzer
 from unittest.mock import MagicMock
+from decimal import Decimal
 
 class TestBettingAnalyzer(unittest.TestCase):
     def setUp(self):
@@ -21,9 +22,11 @@ class TestBettingAnalyzer(unittest.TestCase):
         
         fair_home, fair_away = self.analyzer.remove_vig(home_odds, away_odds)
         
-        self.assertAlmostEqual(fair_home, 0.50, places=4)
-        self.assertAlmostEqual(fair_away, 0.50, places=4)
-        self.assertEqual(fair_home + fair_away, 1.0)
+        self.assertIsInstance(fair_home, Decimal)
+        self.assertIsInstance(fair_away, Decimal)
+        self.assertAlmostEqual(fair_home, Decimal("0.50"), places=4)
+        self.assertAlmostEqual(fair_away, Decimal("0.50"), places=4)
+        self.assertAlmostEqual(fair_home + fair_away, Decimal("1.0"), places=10)
 
         # Test Case 2: Uneven market
         # Home -150 (60%), Away +130 (43.48%)
@@ -35,8 +38,8 @@ class TestBettingAnalyzer(unittest.TestCase):
         
         fair_home_2, fair_away_2 = self.analyzer.remove_vig(home_odds_2, away_odds_2)
         
-        self.assertAlmostEqual(fair_home_2 + fair_away_2, 1.0, places=4)
-        self.assertAlmostEqual(fair_home_2, 0.5798, places=4)
+        self.assertAlmostEqual(fair_home_2 + fair_away_2, Decimal("1.0"), places=4)
+        self.assertAlmostEqual(fair_home_2, Decimal("0.5798"), places=4)
 
 if __name__ == '__main__':
     unittest.main()

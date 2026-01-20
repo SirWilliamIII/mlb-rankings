@@ -133,21 +133,31 @@ class DatabaseManager:
         ''')
 
         # NEW: Table for Shadow Bets (Phase 3)
+        # Drop to ensure schema update (Development/Shadow Mode)
+        self._execute(cursor, "DROP TABLE IF EXISTS shadow_bets")
+        
+        # Determine numeric type
+        numeric_type = "NUMERIC(10, 4)" if self.is_postgres else "REAL" # SQLite doesn't strictly enforce DECIMAL but REAL is fine, or TEXT for exactness. 
+        # Actually for SQLite, REAL is standard float. For financial correctness in SQLite, we often store as INTEGER (cents) or TEXT.
+        # But to match Postgres NUMERIC behavior, we can use DECIMAL in SQLite affinity.
+        if not self.is_postgres:
+            numeric_type = "DECIMAL(10, 4)"
+
         self._execute(cursor, f'''
             CREATE TABLE IF NOT EXISTS shadow_bets (
                 id {pk_type},
                 game_id INTEGER,
                 market {text_type},
                 odds INTEGER,
-                stake REAL,
-                predicted_prob REAL,
-                fair_market_prob REAL,
-                edge REAL,
-                leverage_index REAL,
-                latency_ms REAL,
+                stake {numeric_type},
+                predicted_prob {numeric_type},
+                fair_market_prob {numeric_type},
+                edge {numeric_type},
+                leverage_index {numeric_type},
+                latency_ms {numeric_type},
                 timestamp {datetime_type} DEFAULT CURRENT_TIMESTAMP,
                 outcome {text_type}, -- WON, LOST, VOID
-                profit_loss REAL DEFAULT 0.0
+                profit_loss {numeric_type} DEFAULT 0.0
             )
         ''')
 
