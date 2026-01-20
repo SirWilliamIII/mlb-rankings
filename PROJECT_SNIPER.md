@@ -1,78 +1,80 @@
-rget:** `update_live_game_state()`
-    -   **Action:** Extract the `Updated` or `Time` field from the SportsDataIO payload.
-    -   **Integration:** Call `LatencyMonitor.log_feed_delta` immediately upon payload receipt.
-    -   **Constraint:** If `feed_delta` > `THRESHOLD` (e.g., 6s), trigger a `HighUrgency` flag for the `BettingAnalyzer`.
+# Project: "Sniper Calibration" - Implementation Manifesto
 
-#### **Phase 2: Micro-State Markov Engine (The "Speed")**
+**Status:** Phase 3 Complete (Kill House Verified)
+**Current Focus:** Data Sufficiency & Production Feeds
 
-*Objective: Replace slow Monte Carlo simulations with instant lookup tables for pitch-by-pitch probability.*
+---
 
--   **[ ] Create `app/services/markov_chain_service.py`**
-    -   **Data Structure:** `TRANSITION_MATRICES` (Dict). Keys = `(Inning, Outs, Runners_Bitmask, Score_Diff)`. Values = `Win_Probability_Home`.
-    -   **Method:** `get_instant_win_prob(game_state)### **Project: "Sniper Calibration" - Implementation Plan**
-
-#### **Phase 1: Latency & Feed Synchronization (The "Scope")**
-
+### **Phase 1: Latency & Feed Synchronization (The "Scope")**
 *Objective: Quantify and exploit the time delta between on-field events and sportsbook API updates.*
 
--   **[ ] Create `app/services/latency_monitor.py`**
-    -   **Class:** `LatencyMonitor`
-    -   **Method:** `log_feed_delta(event_timestamp: datetime, receipt_timestamp: datetime)`
-    -   **Logic:** Calculate the difference in seconds. Maintain a rolling average (last 50 events) to determine the current "Opportunity Window" (e.g., "We are 4.5s ahead of the book").
-    -   **Storage:** Log these deltas to a new table `feed_latency_metrics` in `data/mlb_data.db`.
--   **[ ] Update `app/services/live_game_service.py`**
-    -   **Ta`
-    -   **Logic:** Instead of running 1000 sims, look up the base state. Adjust slightly for current pitcher/batter xFIP matchup.
-    -   **Speed Goal:** < 5ms return time.
--   **[ ] Refactor `app/services/state_engine.py`**
-    -   **Action:** Integrate `MarkovChainService` as the primary driver for *in-inning* updates.
-    -   **Fallback:** Keep `MonteCarloSimulator` (`app/services/monte_carlo_simulator.py`) only for *between-inning* deep dives or pre-game modeling.
+- [x] **Create `app/services/latency_monitor.py`**
+    - **Class:** `LatencyMonitor` (Non-blocking `queue` architecture).
+    - **Method:** `log_feed_delta` (Calculates $T_{receipt} - T_{event}$).
+    - **Storage:** Asynchronous logging to `feed_latency_metrics`.
+- [x] **Update `app/services/live_game_service.py`**
+    - **Integration:** Captures `timeStamp` from payload metadata.
+    - **Logic:** Gates all betting signals if `feed_delta` > 6.0s (Hard Stop).
 
-#### **Phase 3: True Price Discovery (The "Edge")**
+### **Phase 2: Micro-State Markov Engine (The "Speed")**
+*Objective: Replace slow Monte Carlo simulations with instant lookup tables for pitch-by-pitch probability.*
 
+- [x] **Create `app/services/markov_chain_service.py`**
+    - **Structure:** O(1) Lookup for 24 Base/Out States.
+    - **Performance:** Vectorized `numpy` inversion for RE24 calculation (< 1ms).
+    - **Modifiers:** Dynamic `pitcher_mod` (Fatigue) and `ttto` (Times Through Order) scaling.
+- [x] **Refactor `app/services/state_engine.py`**
+    - **Action:** Deprecated static RE24 tables in the hot path.
+    - **Integration:** `LiveGameService` now calls `markov_service.get_instant_win_prob()` directly.
+
+### **Phase 3: True Price Discovery (The "Edge")**
 *Objective: Strip sportsbook vigorish (vig) to reveal their true model inputs.*
 
--   **[ ] Update `app/services/betting_analyzer.py`**
-    -   **Method:** `remove_vig(home_odds, away_odds)`
-    -   **Algorithm:** Implement the **Multiplicative Method** (standard for 2-way markets) to normalize implied probabilities to 100%.
-    -   **New Property:** `fair_implied_prob`.
-    -   **Comparison Logic:**
-        -   IF `our_markov_prob` > `fair_implied_prob` + `EDGE_THRESHOLD` (e.g., 2.5%):
-        -   AND `LatencyMonitor.is_safe_window()` is True:
-        -   THEN `signal = "BET_IMMEDIATE"`
+- [x] **Update `app/services/betting_analyzer.py`**
+    - **Method:** `remove_vig(home_odds, away_odds)` implemented.
+    - **Algorithm:** **Multiplicative Method** normalized to 100%.
+    - **Logic:** Sniper executes only when `Model_Prob > Fair_Implied_Prob + 2.5%`.
 
-#### **Phase 4: High-Leverage Context (The "Filter")**
-
+### **Phase 4: High-Leverage Context (The "Filter")**
 *Objective: Only trade when volatility is high enough to hide our edge.*
 
--   **[ ] Update `app/services/state_engine.py`**
-    -   **Method:** `calculate_leverage_index(inning, score_diff, runners, outs)`
-    -   **Logic:** Implement standard LI formula.
-        -   `LI < 0.8`: Mark state as `Low_Variance` (Do not trade, market is efficient).
-        -   `LI > 2.0`: Mark state as `High_Variance` (Aggressive trading allowed).
--   **[ ] Update `app/services/bullpen_history_service.py`**
-    -   **Method:** `get_bullpen_fatigue_score(team_id)`
-    -   **Inputs:** Sum of pitches thrown in last 3 days by top 3 available relievers.
-    -   **Output:** `fatigue_factor` (0.0 to 1.0).
-    -   **Integration:** Pass `fatigue_factor` to `MarkovChainService` to penalize late-game defensive win probability.
+- [x] **Update `app/services/trader_agent.py`** (Leverage Scaling)
+    - **Logic:** `Wager_Pct = Base_Kelly * Leverage_Multiplier`.
+    - **Scaling:** Linearly scales from 0.5x (Low Leverage) to 1.5x (High Leverage).
+- [ ] **Refine `app/services/bullpen_history_service.py`**
+    - **Status:** Logic exists, but backtests revealed **Data Sufficiency** issues (event streams lack pitch counts).
+    - **Next Step:** Connect to granular pitch-by-pitch data feed to feed the `PitcherMonitor`.
 
-#### **Phase 5: Shadow Execution (The "Test")**
-
+### **Phase 5: Shadow Execution (The "Test")**
 *Objective: Dry-run the sniper logic without risking capital.*
 
--   **[ ] Update `app/services/trader_agent.py`**
-    -   **Config:** Add `TRADING_MODE` environment variable (`LIVE`, `SHADOW`, `BACKTEST`).
-    -   **Action:**
-        -   If `SHADOW`: Do not send API order. Instead, insert record into `shadow_bets` table with `timestamp`, `odds`, `stake`, `predicted_edge`, `latency_at_execution`.
-    -   **Reporting:** Create `scripts/shadow_report.py` to print P&L from the `shadow_bets` table.
+- [x] **Update `app/services/trader_agent.py`**
+    - **Signal:** Generates Tier-1 Minified JSON (`{"t":..., "o":...}`).
+    - **Safety Valves:** "Garbage Time" and "Blowout" blocks implemented.
+- [x] **Stress Testing ("Kill House")**
+    - **Script:** `scripts/run_shadow_backtest.py` updated with `MarkovChainService`.
+    - **Feature:** "Stress Injection" added to simulate fatigue during low-fidelity replays.
 
-------
+---
 
 ### **Execution Priority Sequence**
 
-1.  **Step 1**: Implement **Phase 1 (Latency)**. We cannot fight time if we don't measure it.
-2.  **Step 2**: Implement **Phase 3 (True Price)**. We need to know the target's real size.
-3.  **Step 3**: Implement **Phase 2 (Markov)**. Speed up the calculations to fit inside the latency window.
-4.  **Step 4**: Activate **Shadow Mode** on a live game.
+1.  **[COMPLETE] Step 1**: Implement **Phase 1 (Latency)**.
+2.  **[COMPLETE] Step 2**: Implement **Phase 3 (True Price)**.
+3.  **[COMPLETE] Step 3**: Implement **Phase 2 (Markov)**.
+4.  **[IN PROGRESS] Step 4**: Activate **Shadow Mode** on live data.
+    - *Blocker:* Need real-time pitch count feed to drive `PitcherMonitor` correctly (Verified via Stress Test failure).
 
-**Awaiting your command to execute Step 1.**
+---
+
+### **Architecture Diagram (Current)**
+
+```mermaid
+graph TD
+    A[Live Feed] -->|Timestamp| B(Latency Monitor)
+    A -->|Game State| C{Markov Chain Service}
+    D[Pitcher Monitor] -->|Fatigue Mod| C
+    C -->|Win Prob| E(Trader Agent)
+    F[Market Odds] -->|Vig Removal| E
+    B -->|Safe Window?| E
+    E -->|Signal| G[Execution / Log]
